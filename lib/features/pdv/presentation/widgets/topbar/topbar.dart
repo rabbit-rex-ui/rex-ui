@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:rabbit_pdv/core/auth/lock_controller.dart';
 
 import 'package:rabbit_pdv/core/format/time_formatter.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
@@ -12,11 +14,7 @@ class Topbar extends StatelessWidget {
   final ClockController clock;
   final ThemeController theme;
 
-  const Topbar({
-    super.key,
-    required this.clock,
-    required this.theme,
-  });
+  const Topbar({super.key, required this.clock, required this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +31,7 @@ class Topbar extends StatelessWidget {
         children: [
           const AppBrand(),
           const Spacer(),
-          const AppPill(
-            tone: PillTone.success,
-            label: 'Caixa aberto',
-          ),
+          const AppPill(tone: PillTone.success, label: 'Caixa aberto'),
           const SizedBox(width: 14),
           ListenableBuilder(
             listenable: clock,
@@ -52,6 +47,9 @@ class Topbar extends StatelessWidget {
             },
           ),
           const SizedBox(width: 14),
+          const SizedBox(width: 14),
+          const _LockButton(),
+          const SizedBox(width: 10),
           _ThemeToggleButton(theme: theme),
         ],
       ),
@@ -92,6 +90,32 @@ class _ThemeToggleButton extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _LockButton extends StatelessWidget {
+  const _LockButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Tooltip(
+      message: 'Bloquear terminal',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => Modular.get<LockController>().lock(),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: c.surface2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.border),
+          ),
+          child: Icon(LucideIcons.lock, size: 18, color: c.text),
+        ),
+      ),
     );
   }
 }

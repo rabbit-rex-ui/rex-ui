@@ -40,3 +40,14 @@ class LoginResponse {
     refreshToken: j['refreshToken'] as String?,
   );
 }
+
+class TrocarSenhaRequest {
+  const TrocarSenhaRequest({required this.senhaAtual, required this.novaSenha});
+  final String senhaAtual;
+  final String novaSenha;
+
+  Map<String, dynamic> toJson() => {
+    'senhaAtual': senhaAtual,
+    'novaSenha': novaSenha,
+  };
+}

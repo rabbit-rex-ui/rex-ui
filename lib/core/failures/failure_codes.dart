@@ -7,4 +7,5 @@ abstract final class FailureCodes {
   static const contaBloqueada = 'CONTA_BLOQUEADA'; // 403 login
   static const semPermissao = 'SEM_PERMISSAO'; // 403 genérico
   static const regraNegocio = 'REGRA_NEGOCIO'; // 422 fallback
+  static const credenciaisInvalidas = 'CREDENCIAIS_INVALIDAS';
 }

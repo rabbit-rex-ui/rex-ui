@@ -2,26 +2,22 @@ import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/auth/jwt_decoder.dart';
 import 'package:rabbit_pdv/core/config/env.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
-import 'package:rabbit_pdv/features/auth/data/auth_repository.dart';
-import 'package:rabbit_pdv/features/auth/data/dto/login_dtos.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
 
-enum SessionStatus { iniciando, autenticando, abrindoCaixa, pronto, erro }
+enum SessionStatus { iniciando, abrindoCaixa, pronto, erro }
 
-/// Sessão de runtime do PDV: identidade (login) + caixa aberto + contexto fixo
-/// de dev (terminal/warehouse/caixa). É o que alimenta a venda com
-/// terminalId / cashierId / defaultWarehouseId.
+/// Sessão de runtime do PDV: identidade (do token já obtido na LoginPage) +
+/// caixa aberto + contexto fixo de dev (terminal/warehouse/caixa). É o que
+/// alimenta a venda com terminalId / cashierId / defaultWarehouseId.
 ///
-/// Auto-bootstrap em dev: ao ser instanciado, loga e garante o caixa aberto.
-/// Quando a tela de login existir, troque o bootstrap automático por um fluxo
-/// disparado pela UI.
+/// Caminho A: o login NÃO acontece aqui. A LoginPage autentica e persiste o
+/// token; este controller só lê os claims e garante o caixa aberto.
 class CaixaSessionController extends ChangeNotifier {
-  CaixaSessionController(this._auth, this._caixa, this._tokens) {
+  CaixaSessionController(this._caixa, this._tokens) {
     bootstrap();
   }
 
-  final AuthRepository _auth;
   final CaixaRepository _caixa;
   final TokenStore _tokens;
 
@@ -32,7 +28,7 @@ class CaixaSessionController extends ChangeNotifier {
   String? get erro => _erro;
 
   String? _employeeId; // JWT.sub → cashierId / openedBy
-  String? _authUserId; // JWT.auth_user_id (alternativa para openedBy)
+  String? _authUserId; // JWT.auth_user_id (fallback p/ openedBy)
 
   CaixaSessionResponse? _caixaSessao;
   CaixaSessionResponse? get caixaSessao => _caixaSessao;
@@ -46,40 +42,24 @@ class CaixaSessionController extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     try {
-      _set(SessionStatus.autenticando);
-      final login = await _auth.login(
-        const LoginRequest(
-          loginCode: Env.devLoginCode,
-          password: Env.devPassword,
-          tenantId: Env.tenantId,
-        ),
-      );
+      final token = _tokens.accessToken;
+      if (token == null) {
+        _falhar('Sem sessão autenticada. Faça login.');
+        return;
+      }
+      final claims = decodeJwtPayload(token);
+      _employeeId = claims['sub'] as String?;
+      _authUserId = claims['auth_user_id'] as String?;
 
-      final autenticou = login.fold(
-        onOk: (r) {
-          _aplicarLogin(r);
-          return true;
-        },
-        onErr: (f) {
-          _falhar('Login falhou: ${f.message}');
-          return false;
-        },
-      );
-      if (!autenticou) return;
+      if (kDebugMode) {
+        debugPrint('[caixa-session] identidade — employeeId=$_employeeId');
+      }
 
       _set(SessionStatus.abrindoCaixa);
       await _garantirCaixaAberto();
     } catch (e) {
       _falhar('Erro no bootstrap: $e');
     }
-  }
-
-  void _aplicarLogin(LoginResponse r) {
-    _tokens.save(accessToken: r.accessToken, refreshToken: r.refreshToken);
-    final claims = decodeJwtPayload(r.accessToken);
-    _employeeId = claims['sub'] as String?;
-    _authUserId = claims['auth_user_id'] as String?;
-    debugPrint('[auth] login ok — employeeId=$_employeeId');
   }
 
   Future<void> _garantirCaixaAberto() async {

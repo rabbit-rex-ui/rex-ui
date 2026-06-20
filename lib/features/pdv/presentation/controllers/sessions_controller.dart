@@ -16,13 +16,9 @@ class AddItemOutcome {
   final Produto? produto;
   final Failure? erro;
 
-  const AddItemOutcome.ok(this.produto)
-      : sucesso = true,
-        erro = null;
+  const AddItemOutcome.ok(this.produto) : sucesso = true, erro = null;
 
-  const AddItemOutcome.fail(this.erro)
-      : sucesso = false,
-        produto = null;
+  const AddItemOutcome.fail(this.erro) : sucesso = false, produto = null;
 }
 
 /// Controlador dos atendimentos abertos.
@@ -40,7 +36,7 @@ class AddItemOutcome {
 ///    selecionado, o anterior passa a `aguardando` (se estava `digitando`).
 class SessionsController extends ChangeNotifier {
   SessionsController(this._repo, {String operadorId = 'op_demo'})
-      : _operadorId = operadorId {
+    : _operadorId = operadorId {
     _bootstrap();
   }
 
@@ -142,9 +138,43 @@ class SessionsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Pausa o atendimento ativo: status → aguardando. UI continua nele.
+  /// Pausa o atendimento ativo (→ aguardando) e SAI dele: vai para o próximo
+  /// atendimento aguardando, ou cria um novo vazio se este era o único.
+  /// Libera o caixa para o próximo cliente.
   void pausarAtivo() {
-    _mutateActive((a) => a.marcarComoStatus(AtendimentoStatus.aguardando));
+    if (_activeId == null) return;
+    final idx = _sessions.indexWhere((s) => s.id == _activeId);
+    if (idx < 0) return;
+
+    // Marca o atual como aguardando.
+    _sessions[idx] = _sessions[idx].marcarComoStatus(
+      AtendimentoStatus.aguardando,
+    );
+
+    // Procura outro atendimento para assumir o foco (qualquer um != atual).
+    final proximoIdx = _sessions.indexWhere((s) => s.id != _activeId);
+
+    if (proximoIdx >= 0) {
+      _activeId = _sessions[proximoIdx].id;
+      // Se o destino estava aguardando, reativa para digitação.
+      final destino = _sessions[proximoIdx];
+      if (destino.status == AtendimentoStatus.aguardando) {
+        _sessions[proximoIdx] = destino.marcarComoStatus(
+          AtendimentoStatus.digitando,
+        );
+      }
+    } else {
+      // Era o único atendimento → abre um novo vazio e foca nele.
+      final novo = Atendimento.novo(
+        id: _uuid.v4(),
+        ordem: _proximaOrdem++,
+        operadorId: _operadorId,
+      );
+      _sessions.add(novo);
+      _activeId = novo.id;
+    }
+
+    notifyListeners();
   }
 
   /// Marca o ativo como pronto para pagamento. O modal de pagamento usa esse
@@ -216,10 +246,9 @@ class SessionsController extends ChangeNotifier {
   /// de atalhos).
   AddItemOutcome adicionarProduto(Produto produto, {double? qtd}) {
     if (!produto.ativo || !produto.temPreco) {
-      return const AddItemOutcome.fail(BusinessRuleFailure(
-        'Produto não disponível',
-        code: 'INDISPONIVEL',
-      ));
+      return const AddItemOutcome.fail(
+        BusinessRuleFailure('Produto não disponível', code: 'INDISPONIVEL'),
+      );
     }
     _mutateActive((a) => a.addProduto(produto, qtd: qtd));
     return AddItemOutcome.ok(produto);

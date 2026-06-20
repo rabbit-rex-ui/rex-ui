@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
 import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
@@ -13,22 +14,34 @@ class ApiClient {
     required String baseUrl,
     required String tenantId,
     required TokenStore tokens,
+    required VoidCallback onSessionExpired,
     String? terminalId,
     Duration connectTimeout = const Duration(seconds: 5),
     Duration receiveTimeout = const Duration(seconds: 15),
   }) {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: connectTimeout,
-        receiveTimeout: receiveTimeout,
-        validateStatus: (s) => s != null && s < 400,
-        headers: {'Content-Type': 'application/json'},
-      ),
+    final base = BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: connectTimeout,
+      receiveTimeout: receiveTimeout,
+      validateStatus: (s) => s != null && s < 400,
+      headers: {'Content-Type': 'application/json'},
     );
+
+    // Dio cru só pra refresh + replay: tem tenant, NÃO tem AuthInterceptor
+    // (evita o laço 401 → refresh → 401).
+    final refreshDio = Dio(base)
+      ..interceptors.add(
+        TenantInterceptor(tenantId: tenantId, terminalId: terminalId),
+      );
+
+    _dio = Dio(base);
     _dio.interceptors.addAll([
       TenantInterceptor(tenantId: tenantId, terminalId: terminalId),
-      AuthInterceptor(tokens),
+      AuthInterceptor(
+        tokens: tokens,
+        refreshDio: refreshDio,
+        onSessionExpired: onSessionExpired,
+      ),
     ]);
   }
 
