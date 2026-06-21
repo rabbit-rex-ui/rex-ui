@@ -31,7 +31,7 @@ class PaymentFooter extends StatelessWidget {
         final podeConfirmar = controller.podeConfirmar;
         final bloqueio = controller.motivoBloqueio;
         // No Passo A, "alocado" = total quando há método; senão 0.
-        final alocado = controller.metodo == null ? 0.0 : controller.total;
+        final alocado = controller.alocado;
 
         return Container(
           height: 88,

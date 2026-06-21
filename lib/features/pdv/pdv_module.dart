@@ -10,6 +10,7 @@ import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_c
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/sessions_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/pages/pdv_page.dart';
+import 'package:rabbit_pdv/features/pagamento/presentation/controllers/payment_session_store.dart';
 
 class PdvModule extends Module {
   @override
@@ -32,6 +33,9 @@ class PdvModule extends Module {
     );
     i.addSingleton<ViewController>(ViewController.new);
     i.addSingleton<ScannerController>(ScannerController.new);
+    i.addSingleton<PaymentSessionStore>(
+      () => PaymentSessionStore(i.get<SessionsController>()),
+    );
   }
 
   @override

@@ -5,6 +5,7 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
 import 'package:rabbit_pdv/domain/enums/cliente_tipo.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
+import 'package:rabbit_pdv/features/pagamento/presentation/controllers/payment_session_store.dart';
 import 'package:rabbit_pdv/features/pagamento/presentation/pages/payment_modal.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/sessions_controller.dart';
@@ -43,6 +44,7 @@ class _PdvPageState extends State<PdvPage> {
   late final ProdutosRepository repo;
 
   final _scannerFocus = FocusNode(debugLabel: 'scanner');
+  late final PaymentSessionStore paymentStore;
 
   @override
   void initState() {
@@ -55,6 +57,7 @@ class _PdvPageState extends State<PdvPage> {
     repo = Modular.get<ProdutosRepository>();
     caixaSession = Modular.get<CaixaSessionController>();
     vendasRepo = Modular.get<VendasRepository>();
+    paymentStore = Modular.get<PaymentSessionStore>();
 
     // Dispara login + abertura de caixa (auto-bootstrap do controller).
     Modular.get<CaixaSessionController>();
@@ -125,7 +128,12 @@ class _PdvPageState extends State<PdvPage> {
     sessions.marcarProntoParaPagamento();
     final alvo = sessions.active!;
 
-    final pagamentos = await showPaymentModal(context, atendimento: alvo);
+    final controller = paymentStore.controllerFor(alvo);
+    final pagamentos = await showPaymentModal(
+      context,
+      controller: controller,
+      onCancelSave: () => paymentStore.save(alvo.id, controller),
+    );
     if (!mounted) return;
 
     if (pagamentos == null) {
@@ -155,7 +163,8 @@ class _PdvPageState extends State<PdvPage> {
 
     switch (outcome) {
       case VendaConcluida(:final venda):
-        sessions.finalizarVenda(pagamentos); // limpa a aba (mock local)
+        paymentStore.descartar(alvo.id); // limpa a config de pagamento
+        sessions.finalizarVenda(pagamentos);
         _focusScanner();
         _toast(
           'Venda #${venda.saleNumber} · '

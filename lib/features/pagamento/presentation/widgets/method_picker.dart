@@ -4,15 +4,19 @@ import 'package:rabbit_pdv/core/theme/app_colors.dart';
 import 'package:rabbit_pdv/core/theme/app_text.dart';
 import 'package:rabbit_pdv/domain/enums/metodo_pagamento.dart';
 
-/// Grid 3×2 dos métodos de pagamento. O botão selecionado fica em accent.
+/// Grid 3 colunas dos métodos. Encolhe pra só-ícone quando a célula fica
+/// estreita (mais formas no painel → cards menores). Métodos podem ser
+/// desabilitados via [isEnabled] (ex.: dinheiro exclusivo).
 class MethodPicker extends StatelessWidget {
   final MetodoPagamento? selected;
   final ValueChanged<MetodoPagamento> onSelect;
+  final bool Function(MetodoPagamento)? isEnabled;
 
   const MethodPicker({
     super.key,
     required this.selected,
     required this.onSelect,
+    this.isEnabled,
   });
 
   @override
@@ -20,10 +24,10 @@ class MethodPicker extends StatelessWidget {
     const methods = MetodoPagamento.values;
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Grid manual em vez de GridView pra controlar gap e altura exata.
         const cols = 3;
         const gap = 10.0;
         final cellWidth = (constraints.maxWidth - gap * (cols - 1)) / cols;
+        final compact = cellWidth < 72;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -34,6 +38,8 @@ class MethodPicker extends StatelessWidget {
                 child: _MethodButton(
                   method: m,
                   selected: m == selected,
+                  enabled: isEnabled?.call(m) ?? true,
+                  compact: compact,
                   onTap: () => onSelect(m),
                 ),
               ),
@@ -47,11 +53,15 @@ class MethodPicker extends StatelessWidget {
 class _MethodButton extends StatefulWidget {
   final MetodoPagamento method;
   final bool selected;
+  final bool enabled;
+  final bool compact;
   final VoidCallback onTap;
 
   const _MethodButton({
     required this.method,
     required this.selected,
+    required this.enabled,
+    required this.compact,
     required this.onTap,
   });
 
@@ -66,29 +76,17 @@ class _MethodButtonState extends State<_MethodButton> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final selected = widget.selected;
+    final enabled = widget.enabled;
 
     final bg = selected
         ? c.accent
-        : (_hover ? c.surface3 : c.surface2);
+        : (_hover && enabled ? c.surface3 : c.surface2);
     final fg = selected ? c.accentInk : c.text;
     final border = selected ? c.accent : c.border;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          height: 64,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: border, width: selected ? 2 : 1),
-          ),
-          child: Column(
+    final content = widget.compact
+        ? Center(child: Icon(widget.method.icon, size: 20, color: fg))
+        : Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(widget.method.icon, size: 22, color: fg),
@@ -102,8 +100,31 @@ class _MethodButtonState extends State<_MethodButton> {
                 ),
               ),
             ],
-          ),
-        ),
+          );
+
+    final button = AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      height: widget.compact ? 44 : 64,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border, width: selected ? 2 : 1),
+      ),
+      child: content,
+    );
+
+    if (!enabled) {
+      return Opacity(opacity: 0.4, child: button);
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: button,
       ),
     );
   }
