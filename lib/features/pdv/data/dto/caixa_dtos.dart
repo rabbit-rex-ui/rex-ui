@@ -24,6 +24,7 @@ class CaixaSessionResponse {
     required this.openingFloat,
     required this.expectedCash,
     this.openedBy,
+    this.currentCustodianId,
     this.salesCashTotal = 0,
     this.reinforcementsTotal = 0,
     this.withdrawalsTotal = 0,
@@ -37,12 +38,21 @@ class CaixaSessionResponse {
   final double openingFloat;
   final double expectedCash;
   final String? openedBy;
+
+  /// Custodiante corrente (contrato §6.2): último `assumed_by`, ou `openedBy`
+  /// se nunca houve posse. É ESTE — não `openedBy` — que decide Desbloquear vs
+  /// Assumir. Pode vir null em backends antigos; tratamos como "sem posse".
+  final String? currentCustodianId;
+
   final double salesCashTotal;
   final double reinforcementsTotal;
   final double withdrawalsTotal;
   final bool blindClose;
 
   bool get isOpen => status.toUpperCase() == 'OPEN';
+
+  /// Quem está no comando agora: o custodiante corrente, com fallback no abridor.
+  String? get custodianEfetivo => currentCustodianId ?? openedBy;
 
   factory CaixaSessionResponse.fromJson(Map<String, dynamic> j) =>
       CaixaSessionResponse(
@@ -53,6 +63,7 @@ class CaixaSessionResponse {
         openingFloat: _d(j['openingFloat']),
         expectedCash: _d(j['expectedCash']),
         openedBy: j['openedBy'] as String?,
+        currentCustodianId: j['currentCustodianId'] as String?,
         salesCashTotal: _d(j['salesCashTotal']),
         reinforcementsTotal: _d(j['reinforcementsTotal']),
         withdrawalsTotal: _d(j['withdrawalsTotal']),

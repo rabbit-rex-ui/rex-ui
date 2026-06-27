@@ -34,6 +34,10 @@ class AddItemOutcome {
 /// 2. `activeId` aponta sempre para um atendimento existente em `sessions`.
 /// 3. No máximo UM atendimento em status `digitando`. Quando outro é
 ///    selecionado, o anterior passa a `aguardando` (se estava `digitando`).
+///
+/// **Identidade do atendimento:** o `id` é um UUIDv7 local, gerado na abertura.
+/// É o `cart_ref` usado por anulação de item e tomada de posse (assumir caixa),
+/// e referência local da venda em curso (contrato assumir-caixa §5.1).
 class SessionsController extends ChangeNotifier {
   SessionsController(this._repo, {String operadorId = 'op_demo'})
     : _operadorId = operadorId {
@@ -66,7 +70,7 @@ class SessionsController extends ChangeNotifier {
     // Atendimento inicial vazio com cliente anônimo. Em produção, isso
     // viria do estado salvo (atendimentos pendentes do operador).
     final a = Atendimento.novo(
-      id: _uuid.v4(),
+      id: _uuid.v7(),
       ordem: _proximaOrdem++,
       operadorId: _operadorId,
     );
@@ -81,7 +85,7 @@ class SessionsController extends ChangeNotifier {
     _passivarAtivoSeDigitando();
 
     final a = Atendimento.novo(
-      id: _uuid.v4(),
+      id: _uuid.v7(),
       ordem: _proximaOrdem++,
       operadorId: _operadorId,
       cliente: cliente ?? Cliente.anonimo,
@@ -119,7 +123,7 @@ class SessionsController extends ChangeNotifier {
     if (_sessions.isEmpty) {
       // Garante invariante #1: sempre há ao menos um atendimento aberto.
       final novo = Atendimento.novo(
-        id: _uuid.v4(),
+        id: _uuid.v7(),
         ordem: _proximaOrdem++,
         operadorId: _operadorId,
       );
@@ -166,7 +170,7 @@ class SessionsController extends ChangeNotifier {
     } else {
       // Era o único atendimento → abre um novo vazio e foca nele.
       final novo = Atendimento.novo(
-        id: _uuid.v4(),
+        id: _uuid.v7(),
         ordem: _proximaOrdem++,
         operadorId: _operadorId,
       );
@@ -208,7 +212,7 @@ class SessionsController extends ChangeNotifier {
     if (_sessions.isEmpty) {
       // Mantém invariante: sempre há ao menos um atendimento aberto.
       final novo = Atendimento.novo(
-        id: _uuid.v4(),
+        id: _uuid.v7(),
         ordem: _proximaOrdem++,
         operadorId: _operadorId,
       );

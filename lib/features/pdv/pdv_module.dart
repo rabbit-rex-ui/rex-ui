@@ -3,6 +3,8 @@ import 'package:rabbit_pdv/core/core_module.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
+import 'package:rabbit_pdv/features/pdv/data/anulacao_repository.dart';
+import 'package:rabbit_pdv/features/pdv/data/assumir_caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/vendas_repository.dart';
 import 'package:rabbit_pdv/features/pdv/guards/auth_guard.dart';
@@ -24,6 +26,9 @@ class PdvModule extends Module {
     i.addSingleton<VendasRepository>(
       () => VendasRepositoryImpl(i.get<ApiClient>()),
     );
+    i.addSingleton<AnulacaoRepository>(
+      () => AnulacaoRepositoryImpl(i.get<ApiClient>()),
+    );
     i.addSingleton<CaixaSessionController>(
       () =>
           CaixaSessionController(i.get<CaixaRepository>(), i.get<TokenStore>()),
@@ -35,6 +40,9 @@ class PdvModule extends Module {
     i.addSingleton<ScannerController>(ScannerController.new);
     i.addSingleton<PaymentSessionStore>(
       () => PaymentSessionStore(i.get<SessionsController>()),
+    );
+    i.addSingleton<AssumirCaixaRepository>(
+      () => AssumirCaixaRepositoryImpl(i.get<ApiClient>()),
     );
   }
 

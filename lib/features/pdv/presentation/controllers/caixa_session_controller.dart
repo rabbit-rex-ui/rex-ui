@@ -42,6 +42,11 @@ class CaixaSessionController extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     try {
+      _set(SessionStatus.iniciando);
+      _caixaSessao = null;
+      _employeeId = null;
+      _authUserId = null;
+
       final token = _tokens.accessToken;
       if (token == null) {
         _falhar('Sem sessão autenticada. Faça login.');

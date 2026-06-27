@@ -8,4 +8,12 @@ abstract final class FailureCodes {
   static const semPermissao = 'SEM_PERMISSAO'; // 403 genérico
   static const regraNegocio = 'REGRA_NEGOCIO'; // 422 fallback
   static const credenciaisInvalidas = 'CREDENCIAIS_INVALIDAS';
+
+  // ── Assumir caixa (cx.takeover) — contrato §8. `code` LITERAL do corpo de
+  //    erro tipado (NÃO normalizar para UPPER_SNAKE). ──
+  static const cxTakeoverSegregation = 'segregation';
+  static const cxTakeoverJustificationRequired = 'justification-required';
+  static const cxTakeoverSessionInvalid = 'session-invalid';
+  static const cxTakeoverReasonNoteRequired = 'reason-note-required';
+  static const cxTakeoverInvalidRequest = 'invalid-request';
 }

@@ -103,15 +103,16 @@ Failure _mapStatus(Response<dynamic> res) {
     case 401:
       return const NetworkFailure('Sessão expirada.', statusCode: 401);
     case 403:
-      return BusinessRuleFailure(msg, code: _code403(msg, pd.type));
+      // Preferimos o `code` estável do corpo; senão caímos no text-matching.
+      return BusinessRuleFailure(msg, code: pd.code ?? _code403(msg, pd.type));
     case 404:
       return NotFoundFailure(pd.detail ?? 'Recurso não encontrado.');
     case 409:
-      return BusinessRuleFailure(msg, code: _code409(msg));
+      return BusinessRuleFailure(msg, code: pd.code ?? _code409(msg));
     case 422:
       return BusinessRuleFailure(
         msg,
-        code: _codeFromType(pd.type) ?? FailureCodes.regraNegocio,
+        code: pd.code ?? _codeFromType(pd.type) ?? FailureCodes.regraNegocio,
       );
     case 429:
       final wait = _retryAfter(res);
@@ -169,16 +170,19 @@ Duration? _retryAfter(Response<dynamic> res) {
   return s == null ? null : Duration(seconds: s);
 }
 
-({String? type, String? title, String? detail}) _problemDetail(dynamic data) {
+({String? type, String? title, String? detail, String? code}) _problemDetail(
+  dynamic data,
+) {
   if (data is Map<String, dynamic>) {
     return (
       type: data['type'] as String?,
       title: data['title'] as String?,
       detail: data['detail'] as String?,
+      code: data['code'] as String?, // ProblemDetail estendido (contrato §8)
     );
   }
   if (data is String && data.isNotEmpty) {
-    return (type: null, title: null, detail: data);
+    return (type: null, title: null, detail: data, code: null);
   }
-  return (type: null, title: null, detail: null);
+  return (type: null, title: null, detail: null, code: null);
 }
