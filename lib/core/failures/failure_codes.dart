@@ -16,4 +16,16 @@ abstract final class FailureCodes {
   static const cxTakeoverSessionInvalid = 'session-invalid';
   static const cxTakeoverReasonNoteRequired = 'reason-note-required';
   static const cxTakeoverInvalidRequest = 'invalid-request';
+
+  // ── Fechamento de caixa (cx.close) — contrato §7.4. `code` LITERAL do corpo
+  //    tipado. ──
+  static const closeJustificationRequired =
+      'close-justification-required'; // 422
+  static const closeApprovalRequired = 'close-approval-required'; // 422
+  static const closeSegregation = 'close-segregation'; // 422
+  static const stepupInvalidCredential = 'stepup-invalid-credential'; // 401
+  static const stepupLocked = 'stepup-locked'; // 403
+  static const stepupDenied = 'stepup-denied'; // 403
+  static const closeApprovalUnavailable =
+      'close-approval-unavailable'; // 501 (dev)
 }

@@ -101,6 +101,16 @@ Failure _mapStatus(Response<dynamic> res) {
         fieldErrors: _fieldErrors(res.data),
       );
     case 401:
+      // Regra geral: 401 = token do operador expirado → NetworkFailure, e o
+      // AuthInterceptor dispara o refresh. EXCEÇÃO: endpoints com step-up
+      // (fechamento, anulação) devolvem 401 com corpo tipado `code`
+      // (stepup-invalid-credential). Aí o 401 é credencial de supervisor
+      // inválida, não sessão expirada — preservamos o `code` para o repo/
+      // controller rotearem. 401 de token expirado NÃO traz `code`, então cai
+      // no ramo antigo, intacto.
+      if (pd.code != null) {
+        return BusinessRuleFailure(msg, code: pd.code!);
+      }
       return const NetworkFailure('Sessão expirada.', statusCode: 401);
     case 403:
       // Preferimos o `code` estável do corpo; senão caímos no text-matching.

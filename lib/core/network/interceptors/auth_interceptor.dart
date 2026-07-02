@@ -6,6 +6,13 @@ import 'package:rabbit_pdv/features/auth/data/dto/login_dtos.dart';
 /// Anexa `Authorization: Bearer <token>` em tudo (exceto endpoints de auth)
 /// e, em 401, tenta UM refresh (single-flight) e refaz a requisição original.
 /// Se o refresh falhar, dispara [onSessionExpired] (bloqueio → login).
+///
+/// Exceção: requisições marcadas com `extra['skipAuthRefresh'] == true` NÃO
+/// passam pelo refresh. São os endpoints de step-up de supervisor (fechamento
+/// com divergência, anulação de item), onde o 401 significa "credencial de
+/// supervisor inválida" (corpo tipado com `code`), não "token do operador
+/// expirado". Deixar o refresh rodar aqui mascararia o erro real e ainda
+/// reenviaria a senha do supervisor no replay.
 class AuthInterceptor extends QueuedInterceptor {
   AuthInterceptor({
     required TokenStore tokens,
@@ -40,8 +47,10 @@ class AuthInterceptor extends QueuedInterceptor {
     final is401 = err.response?.statusCode == 401;
     final isAuth = _isAuthEndpoint(err.requestOptions.path);
     final jaTentou = err.requestOptions.extra['__retried'] == true;
+    // Opt-in por request: pula o refresh nos fluxos de step-up de supervisor.
+    final pulaRefresh = err.requestOptions.extra['skipAuthRefresh'] == true;
 
-    if (!is401 || isAuth || jaTentou || _semRefreshToken()) {
+    if (!is401 || isAuth || jaTentou || pulaRefresh || _semRefreshToken()) {
       return handler.next(err);
     }
 
