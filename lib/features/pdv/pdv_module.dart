@@ -2,6 +2,7 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:rabbit_pdv/core/core_module.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
+import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/anulacao_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/assumir_caixa_repository.dart';
@@ -13,6 +14,7 @@ import 'package:rabbit_pdv/features/pdv/presentation/controllers/sessions_contro
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/pages/pdv_page.dart';
 import 'package:rabbit_pdv/features/pagamento/presentation/controllers/payment_session_store.dart';
+import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 
 class PdvModule extends Module {
   @override
@@ -30,8 +32,12 @@ class PdvModule extends Module {
       () => AnulacaoRepositoryImpl(i.get<ApiClient>()),
     );
     i.addSingleton<CaixaSessionController>(
-      () =>
-          CaixaSessionController(i.get<CaixaRepository>(), i.get<TokenStore>()),
+      () => CaixaSessionController(
+        i.get<CaixaRepository>(),
+        i.get<TokenStore>(),
+        i.get<TerminalContextStore>(),
+        i.get<CaixaFisicoRepository>(),
+      ),
     );
     i.addSingleton<SessionsController>(
       () => SessionsController(i.get<ProdutosRepository>()),

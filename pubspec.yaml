@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_secure_storage: ^9.2.4
+  qr_flutter: ^4.1.0
+
   # DI + módulos. Usado apenas como container, sem acoplar controllers a ele.
   flutter_modular: ^6.3.4
 
@@ -41,6 +44,7 @@ dependencies:
 
   # Lock de single-flight no refresh de token.
   synchronized: ^3.4.1
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   flutter_test:

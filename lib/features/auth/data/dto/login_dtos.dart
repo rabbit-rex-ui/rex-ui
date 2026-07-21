@@ -1,17 +1,19 @@
 class LoginRequest {
+  final String loginCode;
+  final String password;
+  final String? tenantId; // opcional; normalmente NÃO enviar (guia §1.1)
+
   const LoginRequest({
     required this.loginCode,
     required this.password,
-    required this.tenantId,
+    this.tenantId,
   });
-  final String loginCode;
-  final String password;
-  final String tenantId;
 
   Map<String, dynamic> toJson() => {
     'loginCode': loginCode,
     'password': password,
-    'tenantId': tenantId,
+    // só inclui a chave se explicitamente setado (forçar filial específica)
+    if (tenantId != null) 'tenantId': tenantId,
   };
 }
 

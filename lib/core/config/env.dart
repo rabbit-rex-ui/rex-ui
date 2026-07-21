@@ -3,14 +3,6 @@ abstract final class Env {
     'API_BASE_URL',
     defaultValue: 'http://localhost:8080',
   );
-  static const tenantId = String.fromEnvironment(
-    'TENANT_ID',
-    defaultValue: '467ecf8e-69d1-4a76-adb2-ba92d4e6e537',
-  );
-  static const terminalId = String.fromEnvironment(
-    'TERMINAL_ID',
-    defaultValue: 'TERM-001',
-  );
 
   /// Caixa físico PDV-01 (cx_cash_registers.id) — valor do Swagger.
   static const cashRegisterId = String.fromEnvironment(

@@ -5,11 +5,9 @@ import 'package:rabbit_pdv/features/auth/domain/auth_repository.dart';
 import 'package:rabbit_pdv/features/auth/domain/auth_session.dart';
 
 class LoginController extends ChangeNotifier {
-  LoginController(this._repo, {required String tenantId})
-    : _tenantId = tenantId;
+  LoginController(this._repo);
 
   final AuthRepository _repo;
-  final String _tenantId;
 
   bool _loading = false;
   bool get loading => _loading;
@@ -52,7 +50,7 @@ class LoginController extends ChangeNotifier {
     notifyListeners();
 
     final result = await _repo.login(
-      LoginRequest(loginCode: code, password: password, tenantId: _tenantId),
+      LoginRequest(loginCode: code, password: password),
     );
 
     switch (result) {

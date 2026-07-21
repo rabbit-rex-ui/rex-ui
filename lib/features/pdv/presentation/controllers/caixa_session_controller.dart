@@ -2,24 +2,33 @@ import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/auth/jwt_decoder.dart';
 import 'package:rabbit_pdv/core/config/env.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
+import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
+import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 
-enum SessionStatus { iniciando, abrindoCaixa, pronto, erro }
+enum SessionStatus { iniciando, resolvendoTerminal, abrindoCaixa, pronto, erro }
 
-/// Sessão de runtime do PDV: identidade (do token já obtido na LoginPage) +
-/// caixa aberto + contexto fixo de dev (terminal/warehouse/caixa). É o que
-/// alimenta a venda com terminalId / cashierId / defaultWarehouseId.
+/// Sessão de runtime do PDV: identidade do operador (claims do JWT) +
+/// identidade do terminal (da ativação) + caixa aberto.
 ///
-/// Caminho A: o login NÃO acontece aqui. A LoginPage autentica e persiste o
-/// token; este controller só lê os claims e garante o caixa aberto.
+/// O contexto do caixa NÃO vem mais de Env: `cashRegisterId` vem da ativação
+/// (TerminalContextStore) e `terminalId`/`defaultWarehouseId` são resolvidos
+/// via GET /pdv/caixas-fisicos/{id}, com cache local.
 class CaixaSessionController extends ChangeNotifier {
-  CaixaSessionController(this._caixa, this._tokens) {
+  CaixaSessionController(
+    this._caixa,
+    this._tokens,
+    this._terminalCtx,
+    this._caixasFisicos,
+  ) {
     bootstrap();
   }
 
   final CaixaRepository _caixa;
   final TokenStore _tokens;
+  final TerminalContextStore _terminalCtx;
+  final CaixaFisicoRepository _caixasFisicos;
 
   SessionStatus _status = SessionStatus.iniciando;
   SessionStatus get status => _status;
@@ -30,14 +39,19 @@ class CaixaSessionController extends ChangeNotifier {
   String? _employeeId; // JWT.sub → cashierId / openedBy
   String? _authUserId; // JWT.auth_user_id (fallback p/ openedBy)
 
+  String? _cashRegisterId;
+  String? _terminalId;
+  String? _defaultWarehouseId;
+
   CaixaSessionResponse? _caixaSessao;
   CaixaSessionResponse? get caixaSessao => _caixaSessao;
 
   // Contexto para a venda.
   String? get cashierId => _employeeId;
-  String get terminalId => Env.terminalId;
-  String get defaultWarehouseId => Env.defaultWarehouseId;
-  String get cashRegisterId => Env.cashRegisterId;
+  String get terminalId => _terminalId ?? '';
+  String get cashRegisterId => _cashRegisterId ?? '';
+  String get defaultWarehouseId =>
+      _defaultWarehouseId ?? Env.defaultWarehouseId;
   bool get pronto => _status == SessionStatus.pronto;
 
   Future<void> bootstrap() async {
@@ -60,11 +74,53 @@ class CaixaSessionController extends ChangeNotifier {
         debugPrint('[caixa-session] identidade — employeeId=$_employeeId');
       }
 
+      _set(SessionStatus.resolvendoTerminal);
+      if (!await _resolverTerminal()) return;
+
       _set(SessionStatus.abrindoCaixa);
       await _garantirCaixaAberto();
     } catch (e) {
       _falhar('Erro no bootstrap: $e');
     }
+  }
+
+  /// Resolve o contexto do terminal: cashRegisterId vem da ativação;
+  /// terminalId/defaultWarehouseId vêm do caixa físico (com cache local).
+  Future<bool> _resolverTerminal() async {
+    final ctx = await _terminalCtx.carregar();
+    if (ctx == null) {
+      _falhar('Terminal não ativado. Ative este terminal antes de operar.');
+      return false;
+    }
+    _cashRegisterId = ctx.cashRegisterId;
+
+    final r = await _caixasFisicos.buscarPorId(ctx.cashRegisterId);
+    return r.fold(
+      onOk: (pdv) {
+        _terminalId = pdv.terminalId;
+        _defaultWarehouseId = pdv.defaultWarehouseId;
+        // Cacheia o terminalId para boots offline/futuros.
+        if (ctx.terminalId != pdv.terminalId) {
+          _terminalCtx.salvar(ctx.comTerminalId(pdv.terminalId));
+        }
+        if (kDebugMode) {
+          debugPrint(
+            '[caixa-session] terminal=${pdv.terminalId} '
+            'caixa=${pdv.code}',
+          );
+        }
+        return true;
+      },
+      onErr: (f) {
+        // Sem rede: usa o terminalId cacheado, se houver.
+        if (ctx.terminalId != null && ctx.terminalId!.isNotEmpty) {
+          _terminalId = ctx.terminalId;
+          return true;
+        }
+        _falhar('Não foi possível resolver o terminal: ${f.message}');
+        return false;
+      },
+    );
   }
 
   Future<void> _garantirCaixaAberto() async {
@@ -81,8 +137,7 @@ class CaixaSessionController extends ChangeNotifier {
     );
     if (reusou) return;
 
-    // 2) Abrir. openedBy = employeeId (sub) — é o que a resposta do backend
-    //    normaliza. ⚠️ Se der 400 em openedBy, troque para `_authUserId`.
+    // 2) Abrir. openedBy = employeeId (sub).
     final openedBy = _employeeId ?? _authUserId;
     if (openedBy == null) {
       _falhar('Sem operador para abrir o caixa.');

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
 import 'package:rabbit_pdv/features/auth/presentation/login_controller.dart';
 
@@ -19,12 +20,16 @@ class _LoginPageState extends State<LoginPage> {
   final _loginCodeFocus = FocusNode();
   final _passwordFocus = FocusNode();
 
+  /// Otimista até o storage responder — evita piscar o aviso no primeiro frame.
+  bool _terminalAtivado = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _loginCodeFocus.requestFocus(),
     );
+    _carregarContextoTerminal();
   }
 
   @override
@@ -35,6 +40,15 @@ class _LoginPageState extends State<LoginPage> {
     _loginCodeFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
+  }
+
+  /// Lê a identidade do terminal do secure storage. Sem contexto salvo, o
+  /// terminal não foi provisionado (gate de ativação).
+  Future<void> _carregarContextoTerminal() async {
+    final store = Modular.get<TerminalContextStore>();
+    await store.carregar();
+    if (!mounted) return;
+    setState(() => _terminalAtivado = store.ativado);
   }
 
   Future<void> _submit() async {
@@ -96,6 +110,13 @@ class _LoginPageState extends State<LoginPage> {
             'Use seu código de login e senha.',
             style: TextStyle(fontSize: 12.5, color: colors.textMute),
           ),
+
+          // Gate: terminal sem identidade registrada.
+          if (!_terminalAtivado) ...[
+            const SizedBox(height: 16),
+            _avisoTerminalInativo(colors),
+          ],
+
           const SizedBox(height: 20),
 
           _label('Código de login', colors),
@@ -158,10 +179,65 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 20),
           _submitButton(colors, loading),
+
+          // Back-office do gestor: emitir token de provisionamento.
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: () => Modular.to.navigate('/provisionar-terminal/'),
+              icon: Icon(
+                LucideIcons.settings,
+                size: 15,
+                color: colors.textMute,
+              ),
+              label: Text(
+                'Configurar terminal',
+                style: TextStyle(fontSize: 12.5, color: colors.textMute),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  // ─── Gate: terminal não provisionado ───
+  Widget _avisoTerminalInativo(AppColors colors) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+    decoration: BoxDecoration(
+      color: colors.warn.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: colors.warn.withValues(alpha: 0.35)),
+    ),
+    child: Row(
+      children: [
+        Icon(LucideIcons.triangleAlert, size: 16, color: colors.warn),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Terminal não ativado.',
+            style: TextStyle(fontSize: 12, color: colors.warn),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Modular.to.navigate('/ativar-terminal/'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            'Ativar',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colors.warn,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   // ─── Marca (logo "R" + nome), montada por tokens (spec 04 · Brand lg) ───
   Widget _brandMark(AppColors colors) {

@@ -26,7 +26,7 @@ class RegistrarVendaRequest {
     this.headerDiscount,
   });
 
-  final String terminalId;
+  final String terminalId; // @NotBlank no backend — do caixa físico ativado
   final String cashierId; // sub do JWT
   final String defaultWarehouseId;
   final List<VendaItemDto> itens;

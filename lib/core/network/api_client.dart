@@ -2,20 +2,21 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
 import 'package:rabbit_pdv/core/failures/failure_codes.dart';
+import 'package:rabbit_pdv/core/network/interceptors/trusted_device_interceptor.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/core/network/interceptors/auth_interceptor.dart';
 import 'package:rabbit_pdv/core/network/interceptors/tenant_interceptor.dart';
+import 'package:rabbit_pdv/core/auth/trusted_device_store.dart';
 
 /// Cliente HTTP central. baseUrl vem do Bootstrap (--dart-define).
 /// Todo erro vira uma Failure tipada; repositórios desserializam via `decode`.
 class ApiClient {
   ApiClient({
     required String baseUrl,
-    required String tenantId,
     required TokenStore tokens,
+    required TrustedDeviceStore trustedDevices,
     required VoidCallback onSessionExpired,
-    String? terminalId,
     Duration connectTimeout = const Duration(seconds: 5),
     Duration receiveTimeout = const Duration(seconds: 15),
   }) {
@@ -27,16 +28,14 @@ class ApiClient {
       headers: {'Content-Type': 'application/json'},
     );
 
-    // Dio cru só pra refresh + replay: tem tenant, NÃO tem AuthInterceptor
+    // Dio cru só pra refresh + replay: NÃO tem AuthInterceptor
     // (evita o laço 401 → refresh → 401).
-    final refreshDio = Dio(base)
-      ..interceptors.add(
-        TenantInterceptor(tenantId: tenantId, terminalId: terminalId),
-      );
+    final refreshDio = Dio(base)..interceptors.add(TenantInterceptor());
 
     _dio = Dio(base);
     _dio.interceptors.addAll([
-      TenantInterceptor(tenantId: tenantId, terminalId: terminalId),
+      TenantInterceptor(),
+      TrustedDeviceInterceptor(trustedDevices, tokens),
       AuthInterceptor(
         tokens: tokens,
         refreshDio: refreshDio,
