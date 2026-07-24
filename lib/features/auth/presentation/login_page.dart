@@ -4,6 +4,7 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
+import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
 import 'package:rabbit_pdv/features/auth/presentation/login_controller.dart';
 
 class LoginPage extends StatefulWidget {
@@ -58,6 +59,8 @@ class _LoginPageState extends State<LoginPage> {
     );
     if (!mounted || !ok) return;
     _passwordCtrl.clear(); // não mantém a senha em memória após o sucesso
+    await Modular.get<SessaoAtual>().carregar();
+    if (!mounted) return;
     Modular.to.navigate(
       _controller.passwordMustChange ? '/trocar-senha/' : '/pdv/',
     );
@@ -196,6 +199,15 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
+          Center(
+            child: TextButton(
+              onPressed: () => Modular.to.navigate('/definir-senha/'),
+              child: Text(
+                'Primeiro acesso / redefinir senha',
+                style: TextStyle(fontSize: 12.5, color: colors.textMute),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -273,15 +285,6 @@ class _LoginPageState extends State<LoginPage> {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: colors.text,
-                height: 1.2,
-              ),
-            ),
-            Text(
-              'Loja 01 · Caixa 03', // ajuste p/ a identificação real do terminal
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-                color: colors.textMute,
                 height: 1.2,
               ),
             ),

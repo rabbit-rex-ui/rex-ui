@@ -125,6 +125,11 @@ class _PdvPageState extends State<PdvPage> {
       return;
     }
 
+    if (caixaSession.terminalId.isEmpty) {
+      _toast('Terminal não identificado. Reinicie o PDV.');
+      return;
+    }
+
     sessions.marcarProntoParaPagamento();
     final alvo = sessions.active!;
 

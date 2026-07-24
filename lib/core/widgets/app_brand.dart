@@ -19,10 +19,10 @@ class AppBrand extends StatelessWidget {
   });
 
   double get _logoSize => switch (size) {
-        BrandSize.sm => 26,
-        BrandSize.md => 30,
-        BrandSize.lg => 34,
-      };
+    BrandSize.sm => 26,
+    BrandSize.md => 30,
+    BrandSize.lg => 34,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -61,15 +61,6 @@ class AppBrand extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: c.text,
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '$loja · $caixa',
-              style: AppText.caption.copyWith(
-                fontSize: 10.5,
-                color: c.textMute,
                 height: 1.2,
               ),
             ),

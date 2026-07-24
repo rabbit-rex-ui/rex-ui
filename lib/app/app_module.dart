@@ -5,7 +5,10 @@ import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_key_store.dart';
+import 'package:rabbit_pdv/features/auth/data/recuperacao_senha_repository.dart';
 import 'package:rabbit_pdv/features/auth/domain/auth_repository.dart';
+import 'package:rabbit_pdv/features/auth/presentation/definir_senha_controller.dart';
+import 'package:rabbit_pdv/features/auth/presentation/definir_senha_page.dart';
 import 'package:rabbit_pdv/features/auth/presentation/login_controller.dart';
 import 'package:rabbit_pdv/features/auth/presentation/login_page.dart';
 import 'package:rabbit_pdv/features/auth/presentation/trocar_senha_controller.dart';
@@ -21,6 +24,7 @@ import 'package:rabbit_pdv/features/provisionamento/presentation/ativar_terminal
 import 'package:rabbit_pdv/features/provisionamento/presentation/ativar_terminal_page.dart';
 import 'package:rabbit_pdv/features/provisionamento/presentation/provisionar_terminal_controller.dart';
 import 'package:rabbit_pdv/features/provisionamento/presentation/provisionar_terminal_page.dart';
+import 'package:rabbit_pdv/features/provisionamento/presentation/revogar_terminal_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppModule extends Module {
@@ -74,6 +78,19 @@ class AppModule extends Module {
         i.get<TerminalContextStore>(),
       ),
     );
+    i.add<RevogarTerminalController>(
+      () => RevogarTerminalController(
+        i.get<DeviceEnrollmentRepository>(),
+        i.get<TerminalContextStore>(),
+        i.get<TerminalKeyStore>(),
+      ),
+    );
+    i.addSingleton<RecuperacaoSenhaRepository>(
+      () => RecuperacaoSenhaRepositoryImpl(i.get<ApiClient>()),
+    );
+    i.add<DefinirSenhaController>(
+      () => DefinirSenhaController(i.get<RecuperacaoSenhaRepository>()),
+    );
   }
 
   @override
@@ -90,5 +107,6 @@ class AppModule extends Module {
       child: (_) => const ProvisionarTerminalPage(),
     );
     r.child('/ativar-terminal/', child: (_) => const AtivarTerminalPage());
+    r.child('/definir-senha/', child: (_) => const DefinirSenhaPage());
   }
 }

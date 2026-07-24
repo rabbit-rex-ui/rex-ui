@@ -6,15 +6,16 @@ import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
+import 'package:rabbit_pdv/features/provisionamento/data/dto/pdv_fisico.dart';
 
 enum SessionStatus { iniciando, resolvendoTerminal, abrindoCaixa, pronto, erro }
 
 /// Sessão de runtime do PDV: identidade do operador (claims do JWT) +
 /// identidade do terminal (da ativação) + caixa aberto.
 ///
-/// O contexto do caixa NÃO vem mais de Env: `cashRegisterId` vem da ativação
-/// (TerminalContextStore) e `terminalId`/`defaultWarehouseId` são resolvidos
-/// via GET /pdv/caixas-fisicos/{id}, com cache local.
+/// O contexto do caixa NÃO vem de Env: `cashRegisterId` vem da ativação
+/// (TerminalContextStore) e `terminalId`/`defaultWarehouseId`/`name` vêm do
+/// caixa físico (GET /pdv/caixas-fisicos/{id}), com cache local.
 class CaixaSessionController extends ChangeNotifier {
   CaixaSessionController(
     this._caixa,
@@ -42,6 +43,7 @@ class CaixaSessionController extends ChangeNotifier {
   String? _cashRegisterId;
   String? _terminalId;
   String? _defaultWarehouseId;
+  PdvFisico? _pdv;
 
   CaixaSessionResponse? _caixaSessao;
   CaixaSessionResponse? get caixaSessao => _caixaSessao;
@@ -53,6 +55,9 @@ class CaixaSessionController extends ChangeNotifier {
   String get defaultWarehouseId =>
       _defaultWarehouseId ?? Env.defaultWarehouseId;
   bool get pronto => _status == SessionStatus.pronto;
+
+  /// Rótulo do caixa para a topbar (name é NOT NULL no backend).
+  String get caixaLabel => _pdv?.name ?? '';
 
   Future<void> bootstrap() async {
     try {
@@ -85,7 +90,7 @@ class CaixaSessionController extends ChangeNotifier {
   }
 
   /// Resolve o contexto do terminal: cashRegisterId vem da ativação;
-  /// terminalId/defaultWarehouseId vêm do caixa físico (com cache local).
+  /// terminalId/defaultWarehouseId/name vêm do caixa físico (com cache local).
   Future<bool> _resolverTerminal() async {
     final ctx = await _terminalCtx.carregar();
     if (ctx == null) {
@@ -97,16 +102,26 @@ class CaixaSessionController extends ChangeNotifier {
     final r = await _caixasFisicos.buscarPorId(ctx.cashRegisterId);
     return r.fold(
       onOk: (pdv) {
-        _terminalId = pdv.terminalId;
+        _pdv = pdv;
         _defaultWarehouseId = pdv.defaultWarehouseId;
+
+        // §9: cx_cash_registers.terminal_id é nullable, mas pos_sales exige.
+        // Falha AQUI (config) em vez de deixar a venda quebrar no fechamento.
+        if (pdv.terminalId.isEmpty) {
+          _falhar(
+            'Caixa "${pdv.name}" sem terminal configurado. Contate o gestor.',
+          );
+          return false;
+        }
+        _terminalId = pdv.terminalId;
+
         // Cacheia o terminalId para boots offline/futuros.
         if (ctx.terminalId != pdv.terminalId) {
           _terminalCtx.salvar(ctx.comTerminalId(pdv.terminalId));
         }
         if (kDebugMode) {
           debugPrint(
-            '[caixa-session] terminal=${pdv.terminalId} '
-            'caixa=${pdv.code}',
+            '[caixa-session] terminal=${pdv.terminalId} caixa=${pdv.code}',
           );
         }
         return true;

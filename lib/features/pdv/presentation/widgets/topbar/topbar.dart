@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:rabbit_pdv/core/auth/lock_controller.dart';
-
 import 'package:rabbit_pdv/core/format/time_formatter.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
 import 'package:rabbit_pdv/core/theme/app_text.dart';
 import 'package:rabbit_pdv/core/widgets/app_brand.dart';
 import 'package:rabbit_pdv/core/widgets/app_pill.dart';
+import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
+import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
 
 class Topbar extends StatelessWidget {
@@ -30,6 +31,8 @@ class Topbar extends StatelessWidget {
       child: Row(
         children: [
           const AppBrand(),
+          const SizedBox(width: 14),
+          const _ContextoPosto(),
           const Spacer(),
           const AppPill(tone: PillTone.success, label: 'Caixa aberto'),
           const SizedBox(width: 14),
@@ -47,12 +50,57 @@ class Topbar extends StatelessWidget {
             },
           ),
           const SizedBox(width: 14),
-          const SizedBox(width: 14),
           const _LockButton(),
           const SizedBox(width: 10),
           _ThemeToggleButton(theme: theme),
         ],
       ),
+    );
+  }
+}
+
+/// Identificação do posto: Loja · Caixa · Operador. Degrada com elegância —
+/// mostra só o que está disponível, nunca placeholder.
+class _ContextoPosto extends StatelessWidget {
+  const _ContextoPosto();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final sessao = Modular.get<SessaoAtual>();
+    final caixaSession = Modular.get<CaixaSessionController>();
+
+    return ListenableBuilder(
+      listenable: Listenable.merge([sessao, caixaSession]),
+      builder: (_, __) {
+        final me = sessao.me;
+        final loja = me?.tenantName ?? '';
+        final caixa = caixaSession.caixaLabel;
+        final operador = me?.nomeAbreviado ?? '';
+        final operadorFull = me?.employeeName ?? '';
+
+        final partes = [loja, caixa, operador].where((s) => s.isNotEmpty);
+        if (partes.isEmpty) return const SizedBox.shrink();
+
+        return Row(
+          children: [
+            Container(width: 1, height: 18, color: c.border),
+            const SizedBox(width: 14),
+            Icon(LucideIcons.store, size: 14, color: c.textMute),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: operadorFull.isEmpty ? '' : 'Operador: $operadorFull',
+              child: Text(
+                partes.join(' · '),
+                style: AppText.bodySm.copyWith(
+                  color: c.textMute,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

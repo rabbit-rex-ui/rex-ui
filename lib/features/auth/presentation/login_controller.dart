@@ -66,4 +66,11 @@ class LoginController extends ChangeNotifier {
         return false;
     }
   }
+
+  void reset() {
+    _session = null;
+    _errorMessage = null;
+    _loading = false;
+    notifyListeners();
+  }
 }

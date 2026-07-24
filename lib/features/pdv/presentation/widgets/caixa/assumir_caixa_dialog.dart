@@ -170,6 +170,9 @@ class _AssumirCaixaDialogState extends State<_AssumirCaixaDialog> {
 
   bool get _temCarrinho => widget.cartItemCount > 0;
 
+  /// Quando o chamador já autenticou (LockOverlay), não pedimos credenciais.
+  bool get _precisaCredenciais => !widget.controller.jaAutenticado;
+
   @override
   void dispose() {
     _passCtrl.clear();
@@ -190,7 +193,8 @@ class _AssumirCaixaDialogState extends State<_AssumirCaixaDialog> {
 
   Future<void> _submit() async {
     final c = widget.controller;
-    if (_codeCtrl.text.trim().isEmpty || _passCtrl.text.isEmpty) {
+    if (_precisaCredenciais &&
+        (_codeCtrl.text.trim().isEmpty || _passCtrl.text.isEmpty)) {
       _setLocalError('Informe o código de login e a senha de quem assume.');
       return;
     }
@@ -204,8 +208,8 @@ class _AssumirCaixaDialogState extends State<_AssumirCaixaDialog> {
     }
 
     final outcome = await c.assumir(
-      loginCode: _codeCtrl.text,
-      password: _passCtrl.text,
+      loginCode: _precisaCredenciais ? _codeCtrl.text : null,
+      password: _precisaCredenciais ? _passCtrl.text : null,
       reason: _reason,
       reasonNote: _reason == CxTakeoverReason.other
           ? _noteCtrl.text.trim()
@@ -310,61 +314,66 @@ class _AssumirCaixaDialogState extends State<_AssumirCaixaDialog> {
       ),
       const SizedBox(height: 4),
       Text(
-        'Tomada de posse formal. A custódia A→B fica registrada. '
-        'Identifique-se com suas próprias credenciais.',
+        _precisaCredenciais
+            ? 'Tomada de posse formal. A custódia A→B fica registrada. '
+                  'Identifique-se com suas próprias credenciais.'
+            : 'Tomada de posse formal. A custódia A→B fica registrada '
+                  'em seu nome.',
         style: TextStyle(fontSize: 12.5, color: colors.textMute),
       ),
       const SizedBox(height: 20),
 
-      // Credenciais lado a lado (economiza altura).
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _label('Código de login', colors),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _codeCtrl,
-                  enabled: !loading,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  textInputAction: TextInputAction.next,
-                  onChanged: (_) => _clearErrors(),
-                  style: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 15,
-                    fontFeatures: [FontFeature.tabularFigures()],
+      // Credenciais só quando o chamador ainda não autenticou.
+      if (_precisaCredenciais) ...[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _label('Código de login', colors),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _codeCtrl,
+                    enabled: !loading,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) => _clearErrors(),
+                    style: const TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 15,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                    decoration: _input(colors, hint: '10000002'),
                   ),
-                  decoration: _input(colors, hint: '10000002'),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _label('Senha', colors),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _passCtrl,
-                  enabled: !loading,
-                  obscureText: true,
-                  textInputAction: TextInputAction.next,
-                  onChanged: (_) => _clearErrors(),
-                  style: TextStyle(fontSize: 15, color: colors.text),
-                  decoration: _input(colors, hint: '••••••'),
-                ),
-              ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _label('Senha', colors),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _passCtrl,
+                    enabled: !loading,
+                    obscureText: true,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) => _clearErrors(),
+                    style: TextStyle(fontSize: 15, color: colors.text),
+                    decoration: _input(colors, hint: '••••••'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 18),
+          ],
+        ),
+        const SizedBox(height: 18),
+      ],
 
       _label('Motivo', colors),
       const SizedBox(height: 8),

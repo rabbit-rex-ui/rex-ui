@@ -8,6 +8,10 @@ abstract interface class DeviceEnrollmentRepository {
   Future<Result<DeviceEnrollmentResponse, Failure>> emitir(
     DeviceEnrollmentRequest request,
   );
+
+  /// POST /admin/devices/{deviceId}/revogar → 204. Libera o caixa para receber
+  /// um novo terminal. Requer iam.device.manage + estação confiável.
+  Future<Result<void, Failure>> revogar(String deviceId, {String? motivo});
 }
 
 class DeviceEnrollmentRepositoryImpl implements DeviceEnrollmentRepository {
@@ -25,6 +29,18 @@ class DeviceEnrollmentRepositoryImpl implements DeviceEnrollmentRepository {
       ),
       decode: (data) =>
           DeviceEnrollmentResponse.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<Result<void, Failure>> revogar(String deviceId, {String? motivo}) {
+    final m = motivo?.trim();
+    return _api.send<void>(
+      (dio) => dio.post<dynamic>(
+        '/admin/devices/$deviceId/revogar',
+        data: (m == null || m.isEmpty) ? null : {'motivo': m},
+      ),
+      decode: (_) {},
     );
   }
 }

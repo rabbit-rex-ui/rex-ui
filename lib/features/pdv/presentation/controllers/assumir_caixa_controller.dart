@@ -15,6 +15,10 @@ import 'package:rabbit_pdv/features/pdv/data/dto/assumir_caixa_dtos.dart';
 ///
 /// Atribuição é por token (contrato §1.2): após o login de B, todas as chamadas
 /// saem com o bearer de B. Não há rebind.
+///
+/// Quando construído com `jaAutenticado: true` (ex.: pelo LockOverlay, que já
+/// autenticou B para rotear por custódia), o login interno é pulado e as
+/// credenciais não são exigidas.
 class AssumirCaixaController extends ChangeNotifier {
   AssumirCaixaController({
     required AssumirCaixaRepository assumirRepo,
@@ -22,6 +26,7 @@ class AssumirCaixaController extends ChangeNotifier {
     required LoginController login,
     String? cashSessionId, // sessão já em memória (preferido)
     String? cashRegisterId, // fallback: resolve via GET
+    bool jaAutenticado = false, // chamador já logou B; não reautenticar
   }) : assert(
          cashSessionId != null || cashRegisterId != null,
          'Forneça cashSessionId (sessão em memória) ou cashRegisterId (GET).',
@@ -31,6 +36,7 @@ class AssumirCaixaController extends ChangeNotifier {
        _login = login,
        _cashSessionId = cashSessionId,
        _cashRegisterId = cashRegisterId,
+       _autenticado = jaAutenticado,
        _eventId = const Uuid().v7();
 
   final AssumirCaixaRepository _assumir;
@@ -55,7 +61,11 @@ class AssumirCaixaController extends ChangeNotifier {
   bool _jaEhCustodiante = false;
   bool get jaEhCustodiante => _jaEhCustodiante;
 
-  bool _autenticado = false;
+  bool _autenticado;
+
+  /// True quando quem abriu o fluxo já autenticou B. A UI usa isso para não
+  /// pedir credenciais novamente.
+  bool get jaAutenticado => _autenticado;
 
   void clearError() {
     if (_errorMessage == null) return;
@@ -64,9 +74,12 @@ class AssumirCaixaController extends ChangeNotifier {
   }
 
   /// Executa (ou reexecuta) a posse. Retorna a resposta em 2xx; null em falha.
+  ///
+  /// [loginCode]/[password] só são necessários quando o controller NÃO foi
+  /// construído com `jaAutenticado: true`.
   Future<AssumirCaixaResponse?> assumir({
-    required String loginCode,
-    required String password,
+    String? loginCode,
+    String? password,
     required CxTakeoverReason reason,
     String? reasonNote,
     required bool cashVerified,
@@ -79,9 +92,13 @@ class AssumirCaixaController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    // 1) Login de B — só na primeira passada. O bearer de B passa a valer em
-    //    todas as chamadas seguintes (atribuição por token; sem rebind).
+    // 1) Login de B — só quando ainda não autenticado. O bearer de B passa a
+    //    valer em todas as chamadas seguintes (atribuição por token).
     if (!_autenticado) {
+      if (loginCode == null || password == null) {
+        _fail('Informe o código de login e a senha de quem assume.');
+        return null;
+      }
       final ok = await _login.submit(loginCode: loginCode, password: password);
       if (!ok) {
         _fail(_login.errorMessage ?? 'Falha na autenticação.');

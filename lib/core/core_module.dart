@@ -7,11 +7,13 @@ import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/data/repositories/produtos_repository_impl.dart';
 import 'package:rabbit_pdv/data/repositories/produtos_repository_mock.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
+import 'package:rabbit_pdv/features/auth/data/auth_me_repository.dart';
 import 'package:rabbit_pdv/features/auth/data/auth_repository_impl.dart';
 import 'package:rabbit_pdv/features/auth/domain/auth_repository.dart';
 import 'package:rabbit_pdv/core/security/dev_terminal_key_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_key_store.dart';
+import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 
 class CoreModule extends Module {
@@ -46,5 +48,10 @@ class CoreModule extends Module {
       () =>
           ProdutosRepositoryImpl(i.get<ApiClient>(), ProdutosRepositoryMock()),
     );
+
+    i.addSingleton<AuthMeRepository>(
+      () => AuthMeRepositoryImpl(i.get<ApiClient>()),
+    );
+    i.addSingleton<SessaoAtual>(() => SessaoAtual(i.get<AuthMeRepository>()));
   }
 }

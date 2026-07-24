@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:rabbit_pdv/core/auth/lock_controller.dart';
+import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
+import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
 import 'package:rabbit_pdv/features/auth/presentation/login_controller.dart';
 import 'package:rabbit_pdv/features/pdv/data/assumir_caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
@@ -15,10 +17,12 @@ import 'package:rabbit_pdv/features/pdv/presentation/widgets/caixa/assumir_caixa
 /// Overlay de bloqueio do terminal. Cobre o PDV sem desmontá-lo — o carrinho
 /// em memória é preservado. Exige re-autenticação pra liberar.
 ///
-/// Dois caminhos (contrato §1.1), decididos por `currentCustodianId`:
-/// - **Desbloquear**: o custodiante corrente retornando (UX, mantém carrinho).
-/// - **Assumir caixa**: qualquer B ≠ custodiante com `cx.takeover` (custódia
-///   formal A→B, gravada no ledger; B escolhe preservar ou descartar o carrinho).
+/// Fluxo unificado (um botão): a pessoa se identifica e o sistema roteia por
+/// `currentCustodianId` (autoritativo, vindo do ledger de custódia):
+/// - **mesmo custodiante** → desbloqueia, mantém o atendimento;
+/// - **outro operador com `cx.takeover`** → fluxo de posse (ledger, contagem);
+/// - **outro operador sem `cx.takeover`** → recusa, descarta o login e mantém
+///   bloqueado (não pode ficar sessão ativa de quem não opera aqui).
 class LockOverlay extends StatefulWidget {
   const LockOverlay({super.key});
 
@@ -29,6 +33,7 @@ class LockOverlay extends StatefulWidget {
 class _LockOverlayState extends State<LockOverlay> {
   final _login = Modular.get<LoginController>();
   final _lock = Modular.get<LockController>();
+  final _tokens = Modular.get<TokenStore>();
   final _codeCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _codeFocus = FocusNode();
@@ -37,6 +42,12 @@ class _LockOverlayState extends State<LockOverlay> {
   // Chave do Overlay interno — é o ancestral usado pra abrir o diálogo de posse
   // (este overlay NÃO tem Navigator, então showGeneralDialog não serve aqui).
   final _overlayKey = GlobalKey<OverlayState>();
+
+  /// Aviso de roteamento (custódia), distinto do erro de credencial.
+  String? _avisoLocal;
+
+  /// Trava a UI durante o roteamento pós-login.
+  bool _roteando = false;
 
   @override
   void initState() {
@@ -56,32 +67,54 @@ class _LockOverlayState extends State<LockOverlay> {
     super.dispose();
   }
 
-  /// Decide se o caminho "Assumir" deve ser oferecido (contrato §1.1):
-  /// o custodiante corrente da sessão ≠ quem operava este terminal.
-  /// Como no lock não há operador logado (token limpo), comparamos o
-  /// `currentCustodianId` da sessão com o `cashierId` cacheado (quem detinha o
-  /// caixa). Se forem diferentes — ou se não dá pra saber — oferecemos
-  /// "Assumir" (o backend é a rede de segurança via 422 `segregation`).
-  bool get _ofereceAssumir {
-    final caixa = Modular.get<CaixaSessionController>();
-    final custodiante = caixa.caixaSessao?.custodianEfetivo;
-    final operador = caixa.cashierId;
-    if (custodiante == null || operador == null) return true;
-    return custodiante != operador;
-  }
+  /// Ponto de entrada único: autentica UMA vez e roteia por custódia.
+  Future<void> _continuar() async {
+    setState(() {
+      _avisoLocal = null;
+      _roteando = true;
+    });
 
-  Future<void> _unlock() async {
     final ok = await _login.submit(
       loginCode: _codeCtrl.text,
       password: _passCtrl.text,
     );
-    if (!mounted || !ok) return;
-    _passCtrl.clear();
-    _codeCtrl.clear();
-    _lock.unlock(); // libera sem navegar — carrinho intacto
+    if (!mounted) return;
+    if (!ok) {
+      // Credencial inválida: erro já exposto por _login.errorMessage.
+      setState(() => _roteando = false);
+      return;
+    }
+
+    final session = _login.session;
+    final caixa = Modular.get<CaixaSessionController>();
+    final custodiante = caixa.caixaSessao?.custodianEfetivo;
+    final quemLogou = session?.employeeId;
+
+    // (1) Mesmo custodiante → desbloqueio simples, mantém o atendimento.
+    if (quemLogou != null && custodiante != null && quemLogou == custodiante) {
+      _limparCampos();
+      await _rehidratarSessao();
+      if (!mounted) return;
+      _lock.unlock();
+      return;
+    }
+
+    // (2)/(3) Outro operador: só prossegue com cx.takeover.
+    final podeAssumir = session?.hasPermission('cx.takeover') ?? false;
+    if (!podeAssumir) {
+      await _descartarLogin(
+        'Este caixa está sob responsabilidade de outro operador. '
+        'Solicite um supervisor para assumir o caixa.',
+      );
+      return;
+    }
+
+    // (2) Outro operador COM cx.takeover → fluxo formal de posse.
+    setState(() => _roteando = false);
+    await _assumirJaAutenticado();
   }
 
-  Future<void> _assumir() async {
+  Future<void> _assumirJaAutenticado() async {
     final overlay = _overlayKey.currentState;
     if (overlay == null) return;
 
@@ -95,7 +128,8 @@ class _LockOverlayState extends State<LockOverlay> {
       caixaRepo: Modular.get<CaixaRepository>(),
       login: _login,
       cashSessionId: caixaSession.caixaSessao?.id, // preferido (em memória)
-      cashRegisterId: caixaSession.cashRegisterId, // fallback (Env) p/ o GET
+      cashRegisterId: caixaSession.cashRegisterId, // fallback p/ o GET
+      jaAutenticado: true, // o overlay já autenticou B — não relogar
     );
 
     final outcome = await showAssumirCaixaInOverlay(
@@ -106,16 +140,54 @@ class _LockOverlayState extends State<LockOverlay> {
       cartTotal: temItens ? ativo.total : 0,
     );
 
-    if (!mounted || outcome == null) return; // cancelado / falha
+    if (!mounted) return;
+
+    // Cancelou ou falhou: B está autenticado mas NÃO é o custodiante — não
+    // pode seguir operando. Descarta o login e mantém bloqueado.
+    if (outcome == null) {
+      await _descartarLogin('Posse não concluída. O terminal segue bloqueado.');
+      return;
+    }
 
     // B optou por começar do zero → descarta o atendimento de A.
     if (!outcome.cartPreserved && ativo != null) {
       sessions.fechar(ativo.id);
     }
 
+    _limparCampos();
+    await _rehidratarSessao();
+    if (!mounted) return;
+    _lock.unlock(); // libera sem navegar; token de B já vale em tudo
+  }
+
+  /// Descarta credenciais de quem autenticou mas não pode operar aqui, e
+  /// mantém o terminal bloqueado com a mensagem informada.
+  Future<void> _descartarLogin(String aviso) async {
+    await _tokens.clear();
+    _login.reset();
+    if (!mounted) return;
+    _passCtrl.clear();
+    setState(() {
+      _roteando = false;
+      _avisoLocal = aviso;
+    });
+  }
+
+  void _limparCampos() {
     _codeCtrl.clear();
     _passCtrl.clear();
-    _lock.unlock(); // libera sem navegar; token de B já vale em tudo
+  }
+
+  void _aoDigitar() {
+    _login.clearError();
+    if (_avisoLocal != null) setState(() => _avisoLocal = null);
+  }
+
+  /// Rehidrata o contexto após troca de operador: identidade da venda
+  /// (claims do novo token) e dados de exibição (/auth/me).
+  Future<void> _rehidratarSessao() async {
+    await Modular.get<CaixaSessionController>().bootstrap();
+    await Modular.get<SessaoAtual>().carregar();
   }
 
   @override
@@ -146,7 +218,7 @@ class _LockOverlayState extends State<LockOverlay> {
   }
 
   Widget _card(AppColors colors) {
-    final loading = _login.loading;
+    final loading = _login.loading || _roteando;
     final error = _login.errorMessage;
 
     return Container(
@@ -176,7 +248,7 @@ class _LockOverlayState extends State<LockOverlay> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Identifique-se para voltar. O atendimento foi mantido.',
+            'Identifique-se para continuar. O atendimento foi mantido.',
             style: TextStyle(fontSize: 12.5, color: colors.textMute),
           ),
           const SizedBox(height: 20),
@@ -190,7 +262,7 @@ class _LockOverlayState extends State<LockOverlay> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             textInputAction: TextInputAction.next,
-            onChanged: (_) => _login.clearError(),
+            onChanged: (_) => _aoDigitar(),
             onSubmitted: (_) => _passFocus.requestFocus(),
             style: const TextStyle(
               fontFamily: 'JetBrainsMono',
@@ -210,9 +282,9 @@ class _LockOverlayState extends State<LockOverlay> {
             obscureText: _login.obscurePassword,
             autofillHints: const [],
             textInputAction: TextInputAction.done,
-            onChanged: (_) => _login.clearError(),
+            onChanged: (_) => _aoDigitar(),
             onSubmitted: (_) {
-              if (!loading) _unlock();
+              if (!loading) _continuar();
             },
             style: TextStyle(fontSize: 15, color: colors.text),
             decoration: _input(
@@ -234,29 +306,15 @@ class _LockOverlayState extends State<LockOverlay> {
 
           if (error != null) ...[
             const SizedBox(height: 14),
-            _errorBanner(error, colors),
+            _banner(error, colors.danger),
+          ],
+          if (_avisoLocal != null) ...[
+            const SizedBox(height: 14),
+            _banner(_avisoLocal!, colors.warn),
           ],
 
           const SizedBox(height: 20),
           _button(colors, loading),
-
-          if (_ofereceAssumir) ...[
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton.icon(
-                onPressed: loading ? null : _assumir,
-                icon: Icon(
-                  LucideIcons.userCog,
-                  size: 16,
-                  color: colors.textMute,
-                ),
-                label: Text(
-                  'Assumir caixa (outro operador)',
-                  style: TextStyle(fontSize: 13, color: colors.textMute),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -266,12 +324,12 @@ class _LockOverlayState extends State<LockOverlay> {
     return Semantics(
       button: true,
       enabled: !loading,
-      label: 'Desbloquear',
+      label: 'Continuar',
       child: Material(
         color: colors.accent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          onTap: loading ? null : _unlock,
+          onTap: loading ? null : _continuar,
           borderRadius: BorderRadius.circular(10),
           child: Container(
             height: 52,
@@ -286,7 +344,7 @@ class _LockOverlayState extends State<LockOverlay> {
                     ),
                   )
                 : Text(
-                    'Desbloquear',
+                    'Continuar',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -334,22 +392,19 @@ class _LockOverlayState extends State<LockOverlay> {
     ),
   );
 
-  Widget _errorBanner(String message, AppColors colors) => Container(
+  Widget _banner(String message, Color cor) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: colors.danger.withValues(alpha: 0.10),
+      color: cor.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: colors.danger.withValues(alpha: 0.35)),
+      border: Border.all(color: cor.withValues(alpha: 0.35)),
     ),
     child: Row(
       children: [
-        Icon(LucideIcons.circleAlert, size: 16, color: colors.danger),
+        Icon(LucideIcons.circleAlert, size: 16, color: cor),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            message,
-            style: TextStyle(fontSize: 12.5, color: colors.danger),
-          ),
+          child: Text(message, style: TextStyle(fontSize: 12.5, color: cor)),
         ),
       ],
     ),
