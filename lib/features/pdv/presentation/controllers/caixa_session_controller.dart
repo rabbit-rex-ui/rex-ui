@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/auth/jwt_decoder.dart';
 import 'package:rabbit_pdv/core/config/env.dart';
@@ -5,10 +7,15 @@ import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
+import 'package:rabbit_pdv/features/pdv/data/dto/cx_config.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/dto/pdv_fisico.dart';
 
 enum SessionStatus { iniciando, resolvendoTerminal, abrindoCaixa, pronto, erro }
+
+/// Estado da carga do cx-config (contrato v3 §5). O diálogo de sangria usa isto
+/// para decidir entre usar o valor, mostrar "resolvendo" ou cair no fallback.
+enum CxConfigStatus { desconhecido, carregando, carregado, falhou }
 
 /// Sessão de runtime do PDV: identidade do operador (claims do JWT) +
 /// identidade do terminal (da ativação) + caixa aberto.
@@ -39,11 +46,20 @@ class CaixaSessionController extends ChangeNotifier {
 
   String? _employeeId; // JWT.sub → cashierId / openedBy
   String? _authUserId; // JWT.auth_user_id (fallback p/ openedBy)
+  Set<String> _permissoes = const {}; // JWT.permissions (codes literais)
 
   String? _cashRegisterId;
   String? _terminalId;
   String? _defaultWarehouseId;
   PdvFisico? _pdv;
+
+  // ── cx-config (contrato v3 §5) ──
+  // Pre-warm não-bloqueante no boot; garantido no open do diálogo de sangria.
+  // maloteHabilitado não muda dentro do turno (mudança só vale no próximo
+  // boot), então uma carga bem-sucedida vale para a sessão toda.
+  CxConfigResponse? _cxConfig;
+  CxConfigStatus _cxConfigStatus = CxConfigStatus.desconhecido;
+  Future<void>? _cxConfigInFlight;
 
   CaixaSessionResponse? _caixaSessao;
   CaixaSessionResponse? get caixaSessao => _caixaSessao;
@@ -59,12 +75,30 @@ class CaixaSessionController extends ChangeNotifier {
   /// Rótulo do caixa para a topbar (name é NOT NULL no backend).
   String get caixaLabel => _pdv?.name ?? '';
 
+  /// Permissão do operador pelo claim `permissions` do JWT (contrato v3 §2.0).
+  /// Compare com o code literal, sem prefixo (ex.: `temPermissao('cx.reforco')`).
+  /// Fail-closed: claim ausente → nenhuma permissão → sempre `false`.
+  ///
+  /// É gate de UX (esconder/pular passos), não de segurança — o backend sempre
+  /// revalida no servidor.
+  bool temPermissao(String code) => _permissoes.contains(code);
+
+  /// Se o tenant usa o ciclo de malote → controla se o destino COFRE aparece
+  /// na sangria. Default fail-safe (false) enquanto o cx-config não resolve.
+  /// É conveniência de UX, não gate: o backend revalida no servidor.
+  bool get maloteHabilitado => _cxConfig?.maloteHabilitado ?? false;
+
+  /// Estado da carga do cx-config — o diálogo de sangria decide a partir daqui
+  /// entre usar o valor, exibir "resolvendo" ou cair no fallback com aviso.
+  CxConfigStatus get cxConfigStatus => _cxConfigStatus;
+
   Future<void> bootstrap() async {
     try {
       _set(SessionStatus.iniciando);
       _caixaSessao = null;
       _employeeId = null;
       _authUserId = null;
+      _permissoes = const {};
 
       final token = _tokens.accessToken;
       if (token == null) {
@@ -74,9 +108,13 @@ class CaixaSessionController extends ChangeNotifier {
       final claims = decodeJwtPayload(token);
       _employeeId = claims['sub'] as String?;
       _authUserId = claims['auth_user_id'] as String?;
+      _permissoes = _lerPermissoes(claims);
 
       if (kDebugMode) {
-        debugPrint('[caixa-session] identidade — employeeId=$_employeeId');
+        debugPrint(
+          '[caixa-session] identidade — employeeId=$_employeeId '
+          'perms=${_permissoes.length}',
+        );
       }
 
       _set(SessionStatus.resolvendoTerminal);
@@ -84,9 +122,24 @@ class CaixaSessionController extends ChangeNotifier {
 
       _set(SessionStatus.abrindoCaixa);
       await _garantirCaixaAberto();
+
+      // cx-config: pre-warm não-bloqueante, só se o caixa abriu. NÃO altera o
+      // SessionStatus nem trava o boot — é apenas otimização de latência para o
+      // diálogo de sangria. Falha aqui é tolerada; o open re-tenta.
+      if (_status == SessionStatus.pronto) {
+        unawaited(garantirCxConfig());
+      }
     } catch (e) {
       _falhar('Erro no bootstrap: $e');
     }
+  }
+
+  /// Lê o claim `permissions` (array de strings) do payload do JWT, tolerante a
+  /// ausência/formato inesperado (fail-closed → set vazio).
+  static Set<String> _lerPermissoes(Map<String, dynamic> claims) {
+    final raw = claims['permissions'];
+    if (raw is List) return raw.whereType<String>().toSet();
+    return const <String>{};
   }
 
   /// Resolve o contexto do terminal: cashRegisterId vem da ativação;
@@ -173,6 +226,60 @@ class CaixaSessionController extends ChangeNotifier {
       },
       onErr: (f) => _falhar('Abrir caixa falhou: ${f.message}'),
     );
+  }
+
+  /// Garante que o cx-config esteja resolvido antes de usar [maloteHabilitado].
+  ///
+  /// - Já carregado nesta sessão → retorna imediato (cache do turno).
+  /// - Busca em andamento (pre-warm do boot ou outro open) → aguarda a mesma.
+  /// - Desconhecido ou falho → dispara uma nova busca (retry sob demanda).
+  ///
+  /// Chamado pelo diálogo de sangria no open. Nunca lança: em erro/timeout, o
+  /// status vira [CxConfigStatus.falhou] e o chamador decide o fallback.
+  Future<void> garantirCxConfig({
+    Duration timeout = const Duration(seconds: 4),
+  }) {
+    if (_cxConfigStatus == CxConfigStatus.carregado) {
+      return Future<void>.value();
+    }
+    final inFlight = _cxConfigInFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _buscarCxConfig(timeout);
+    _cxConfigInFlight = future;
+    return future;
+  }
+
+  Future<void> _buscarCxConfig(Duration timeout) async {
+    _cxConfigStatus = CxConfigStatus.carregando;
+    notifyListeners();
+    try {
+      final r = await _caixa.cxConfig().timeout(timeout);
+      r.fold(
+        onOk: (cfg) {
+          _cxConfig = cfg;
+          _cxConfigStatus = CxConfigStatus.carregado;
+          if (kDebugMode) {
+            debugPrint('[cx-config] malote=${cfg.maloteHabilitado}');
+          }
+        },
+        onErr: (f) {
+          _cxConfigStatus = CxConfigStatus.falhou;
+          debugPrint('[cx-config][erro] ${f.message}');
+        },
+      );
+    } on TimeoutException {
+      _cxConfigStatus = CxConfigStatus.falhou;
+      debugPrint(
+        '[cx-config][timeout] sem resposta em ${timeout.inMilliseconds}ms',
+      );
+    } catch (e) {
+      _cxConfigStatus = CxConfigStatus.falhou;
+      debugPrint('[cx-config][erro] $e');
+    } finally {
+      _cxConfigInFlight = null;
+      notifyListeners();
+    }
   }
 
   void _set(SessionStatus s) {

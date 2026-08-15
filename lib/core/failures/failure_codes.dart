@@ -28,4 +28,24 @@ abstract final class FailureCodes {
   static const stepupDenied = 'stepup-denied'; // 403
   static const closeApprovalUnavailable =
       'close-approval-unavailable'; // 501 (dev)
+
+  // ── Movimento de caixa / sangria (POST /pdv/caixas/{id}/movimentos) —
+  //    contrato v3 §3.8. `code` LITERAL do corpo tipado (NÃO normalizar).
+  //    Os stepup-* (401/403) acima são COMPARTILHADOS com o fechamento —
+  //    a credencial de supervisor entra no corpo do mesmo jeito. ──
+  static const sessionClosed = 'session-closed'; // 409 (sessão já fechada)
+  static const movementIdempotencyConflict =
+      'movement-idempotency-conflict'; // 409 (mesma chave, conteúdo diferente)
+  static const movementReasonRequired =
+      'movement-reason-required'; // 422 (WITHDRAWAL sem reason)
+  static const movementSupervisorRequired =
+      'movement-supervisor-required'; // 403 (saída Imediata sem supervisor)
+  static const movementSegregation =
+      'movement-segregation'; // 403 (supervisor = operador no step-up)
+  static const movementExceedsCash =
+      'movement-exceeds-cash'; // 422 (saída acima do dinheiro em caixa)
+  static const invalidArgument =
+      'invalid-argument'; // 422 (destino em movimento não-WITHDRAWAL)
+  static const validationFailed =
+      'validation-failed'; // 422 (amount ≤ 0) / 400 (corpo malformado)
 }
