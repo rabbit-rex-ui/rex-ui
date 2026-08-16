@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 
+import 'package:rabbit_pdv/core/format/brl_formatter.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
 import 'package:rabbit_pdv/domain/enums/cliente_tipo.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
 import 'package:rabbit_pdv/features/pagamento/presentation/controllers/payment_session_store.dart';
 import 'package:rabbit_pdv/features/pagamento/presentation/pages/payment_modal.dart';
+import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
+import 'package:rabbit_pdv/features/pdv/data/dto/movimento_caixa_dtos.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/sessions_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
+import 'package:rabbit_pdv/features/pdv/presentation/widgets/dialogs/sangria_dialog.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/items/items_panel.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/scanner/scanner.dart';
+import 'package:rabbit_pdv/features/pdv/presentation/widgets/semaforo_teto.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/side_panel/action_row.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/side_panel/side_panel.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/tabs/tabs_bar.dart';
@@ -100,6 +105,10 @@ class _PdvPageState extends State<PdvPage> {
       _finalizar();
       return true;
     }
+    if (key == LogicalKeyboardKey.f8) {
+      _sangria();
+      return true;
+    }
     if (key == LogicalKeyboardKey.f9) {
       sessions.pausarAtivo();
       return true;
@@ -111,6 +120,31 @@ class _PdvPageState extends State<PdvPage> {
     }
 
     return false;
+  }
+
+  /// Abre o diálogo de movimento de caixa (sangria por padrão, ou reforço).
+  /// Ao concluir, atualiza o semáforo de teto (`aplicarTeto` ignora ausência).
+  Future<void> _sangria({MovimentoTipo tipo = MovimentoTipo.withdrawal}) async {
+    if (!caixaSession.pronto || caixaSession.caixaSessao == null) {
+      _toast('Caixa não está pronto. ${caixaSession.erro ?? "Aguarde."}');
+      return;
+    }
+
+    final resp = await showSangriaDialog(
+      context,
+      repo: Modular.get<CaixaRepository>(),
+      session: caixaSession,
+      tipo: tipo,
+    );
+    if (!mounted || resp == null) {
+      _focusScanner();
+      return;
+    }
+
+    caixaSession.aplicarTeto(resp.cashCeilingStatus);
+    final label = tipo == MovimentoTipo.withdrawal ? 'Sangria' : 'Reforço';
+    _toast('$label registrado: ${BrlFormatter.format(resp.amount)}');
+    _focusScanner();
   }
 
   Future<void> _finalizar() async {
@@ -170,6 +204,8 @@ class _PdvPageState extends State<PdvPage> {
       case VendaConcluida(:final venda):
         paymentStore.descartar(alvo.id); // limpa a config de pagamento
         sessions.finalizarVenda(pagamentos);
+        // Atualiza o semáforo com o teto pós-venda (ignora ausência).
+        caixaSession.aplicarTeto(venda.cashCeilingStatus);
         _focusScanner();
         _toast(
           'Venda #${venda.saleNumber} · '
@@ -177,9 +213,16 @@ class _PdvPageState extends State<PdvPage> {
           '${venda.change > 0 ? " · Troco R\$ ${venda.change.toStringAsFixed(2)}" : ""}',
         );
       case CaixaBloqueado(:final mensagem):
-        // §6.3 — sangria de supervisor (próximo passo). Por ora, avisa.
+        // §6.3 — caixa Imediata no teto: oferece a sangria para desbloquear.
         sessions.retomarDigitacao();
-        _toast('Caixa bloqueado: $mensagem');
+        _focusScanner();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Caixa no limite: $mensagem'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(label: 'Fazer sangria', onPressed: _sangria),
+          ),
+        );
       case SessaoExpirada():
         sessions.retomarDigitacao();
         _toast('Sessão expirada. Refaça o login.');
@@ -220,6 +263,11 @@ class _PdvPageState extends State<PdvPage> {
                           padding: const EdgeInsets.all(14),
                           child: Column(
                             children: [
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: SemaforoTeto(session: caixaSession),
+                              ),
+                              const SizedBox(height: 10),
                               Scanner(
                                 controller: scanner,
                                 sessions: sessions,

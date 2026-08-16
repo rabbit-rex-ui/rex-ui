@@ -8,6 +8,7 @@ import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/cx_config.dart';
+import 'package:rabbit_pdv/features/pdv/data/dto/registrar_venda_response.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/dto/pdv_fisico.dart';
 
@@ -61,6 +62,10 @@ class CaixaSessionController extends ChangeNotifier {
   CxConfigStatus _cxConfigStatus = CxConfigStatus.desconhecido;
   Future<void>? _cxConfigInFlight;
 
+  // ── Semáforo de teto ──
+  // Estado corrente do teto, alimentado por vendas e movimentos. Ver [aplicarTeto].
+  CashCeilingStatus? _cashCeilingStatus;
+
   CaixaSessionResponse? _caixaSessao;
   CaixaSessionResponse? get caixaSessao => _caixaSessao;
 
@@ -91,6 +96,10 @@ class CaixaSessionController extends ChangeNotifier {
   /// Estado da carga do cx-config — o diálogo de sangria decide a partir daqui
   /// entre usar o valor, exibir "resolvendo" ou cair no fallback com aviso.
   CxConfigStatus get cxConfigStatus => _cxConfigStatus;
+
+  /// Estado corrente do teto de caixa (semáforo), ou null se desconhecido/sem
+  /// teto. Atualizado por [aplicarTeto] a partir de respostas de venda/movimento.
+  CashCeilingStatus? get cashCeilingStatus => _cashCeilingStatus;
 
   Future<void> bootstrap() async {
     try {
@@ -226,6 +235,17 @@ class CaixaSessionController extends ChangeNotifier {
       },
       onErr: (f) => _falhar('Abrir caixa falhou: ${f.message}'),
     );
+  }
+
+  /// Atualiza o semáforo de teto a partir de uma resposta (venda ou movimento).
+  ///
+  /// **AUSÊNCIA (null) = NÃO atualiza** — nunca zera o alerta (contrato v3
+  /// §3.9): um replay pode não recomputar o estado; manter o último conhecido é
+  /// o comportamento correto e evita que um retry de rede apague o semáforo.
+  void aplicarTeto(CashCeilingStatus? novo) {
+    if (novo == null) return;
+    _cashCeilingStatus = novo;
+    notifyListeners();
   }
 
   /// Garante que o cx-config esteja resolvido antes de usar [maloteHabilitado].
