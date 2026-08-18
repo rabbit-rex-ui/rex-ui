@@ -17,7 +17,7 @@ import 'package:rabbit_pdv/features/pdv/presentation/widgets/dialogs/pdv_dialog_
 /// Cria um [SangriaController] descartável (eventId UUIDv7 único). O CHAMADOR
 /// deve reagir à resposta não-nula (ex.: atualizar o semáforo com
 /// `resp.cashCeilingStatus`). Em erro, o diálogo permanece aberto para nova
-/// tentativa reusando o mesmo eventId; no step-up, os campos de supervisor são
+/// tentativa reusando o mesmo eventId; no step-up, os campos de fiscal são
 /// revelados sem fechar o diálogo.
 Future<MovimentoCaixaResponse?> showSangriaDialog(
   BuildContext context, {
@@ -74,15 +74,21 @@ class _SangriaDialogState extends State<_SangriaDialog> {
 
   bool get _isSangria => widget.controller.tipo == MovimentoTipo.withdrawal;
 
+  /// Com 4 olhos o papel é de conferência (fiscal); em IMMEDIATE é de
+  /// autorização (supervisor). O substantivo muda o vocabulário da tela.
+  bool get _quatroOlhos => widget.session.sangriaQuatroOlhos;
+  String get _fiscalNoun => _quatroOlhos ? 'fiscal' : 'supervisor';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Resolve a config (COFRE) e a sugestão sem bloquear a abertura.
-      widget.session.garantirCxConfig();
+      // Resolve config (destinos/4-olhos) e sugestão sem bloquear a abertura.
+      await widget.session.garantirCxConfig();
       await widget.controller.carregarSugestao();
       if (!mounted) return;
       _preencherSugestao();
+      _avaliarFiscalAntecipado();
       _amountFocus.requestFocus();
     });
   }
@@ -110,6 +116,25 @@ class _SangriaDialogState extends State<_SangriaDialog> {
     }
   }
 
+  /// Decide, uma única vez (depois que config + sugestão chegaram), se o passo
+  /// do fiscal deve aparecer ANTES do primeiro POST — evitando o roundtrip que
+  /// levaria 403. Regra (§3.5/§5): exige fiscal quando o operador NÃO tem
+  /// `cx.sangria.supervise` e (4 olhos OU caixa IMMEDIATE conhecido). Se o modo
+  /// ainda é desconhecido, não antecipamos — o 403 reativo cuida (sem flicker).
+  void _avaliarFiscalAntecipado() {
+    if (!_isSangria) return;
+    if (widget.session.temPermissao('cx.sangria.supervise')) return;
+    final mode =
+        (widget.controller.sugestao?.ceilingMode ??
+                widget.session.cashCeilingStatus?.mode ??
+                '')
+            .toUpperCase();
+    final modeImmediate = mode == 'IMMEDIATE';
+    if (widget.session.sangriaQuatroOlhos || modeImmediate) {
+      widget.controller.exigirFiscal();
+    }
+  }
+
   void _aplicarValor(double v) {
     widget.controller.setAmount(v);
     final texto = BrlFormatter.format(v);
@@ -119,20 +144,13 @@ class _SangriaDialogState extends State<_SangriaDialog> {
     );
   }
 
-  List<MovimentoDestino> get _destinos => [
-    if (widget.session.maloteHabilitado) MovimentoDestino.cofre,
-    MovimentoDestino.banco,
-    MovimentoDestino.tesouraria,
-    MovimentoDestino.outro,
-  ];
-
   Future<void> _registrar() async {
     final resp = await widget.controller.registrar(
       supervisorLoginCode: _loginCtrl.text,
       supervisorPassword: _pwdCtrl.text,
     );
     if (!mounted || resp == null) {
-      // Se acabou de entrar em step-up, foca o campo de código do supervisor.
+      // Se acabou de entrar em step-up, foca o campo de código do fiscal.
       if (mounted && widget.controller.requerSupervisor) {
         _loginFocus.requestFocus();
       }
@@ -226,7 +244,7 @@ class _SangriaDialogState extends State<_SangriaDialog> {
             ),
 
             if (_isSangria) ..._destinoSection(colors),
-            if (ctrl.requerSupervisor) ..._supervisorSection(colors),
+            if (ctrl.requerSupervisor) ..._fiscalSection(colors),
 
             if (ctrl.errorMessage != null) ...[
               const SizedBox(height: 14),
@@ -349,7 +367,21 @@ class _SangriaDialogState extends State<_SangriaDialog> {
   }
 
   List<Widget> _destinoSection(AppColors colors) {
-    final falhou = widget.session.cxConfigStatus == CxConfigStatus.falhou;
+    final destinos = widget.session.destinosSangria;
+    if (destinos.isEmpty) {
+      // Destino é opcional. Só avisamos (discreto) se a config falhou; enquanto
+      // carrega ou se o tenant não habilitou destino, a seção fica oculta.
+      if (widget.session.cxConfigStatus == CxConfigStatus.falhou) {
+        return [
+          const SizedBox(height: 16),
+          Text(
+            'Opções de destino indisponíveis no momento.',
+            style: TextStyle(fontSize: 11.5, color: colors.textMute),
+          ),
+        ];
+      }
+      return const [];
+    }
     return [
       const SizedBox(height: 16),
       const PdvFieldLabel('DESTINO'),
@@ -357,16 +389,8 @@ class _SangriaDialogState extends State<_SangriaDialog> {
       Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: [for (final d in _destinos) _destinoChip(d, colors)],
+        children: [for (final d in destinos) _destinoChip(d, colors)],
       ),
-      if (falhou) ...[
-        const SizedBox(height: 8),
-        Text(
-          'Não foi possível confirmar a configuração da loja — '
-          'destino "Cofre" indisponível no momento.',
-          style: TextStyle(fontSize: 11.5, color: colors.textMute),
-        ),
-      ],
     ];
   }
 
@@ -398,13 +422,17 @@ class _SangriaDialogState extends State<_SangriaDialog> {
     );
   }
 
-  List<Widget> _supervisorSection(AppColors colors) {
+  List<Widget> _fiscalSection(AppColors colors) {
     final ctrl = widget.controller;
+    final noun = _fiscalNoun;
+    final banner = _quatroOlhos
+        ? 'Esta sangria exige a presença de um fiscal para conferência.'
+        : 'Esta saída precisa de liberação de um supervisor.';
     return [
       const SizedBox(height: 16),
-      const PdvInfoBanner('Esta saída precisa de liberação de um supervisor.'),
+      PdvInfoBanner(banner),
       const SizedBox(height: 14),
-      const PdvFieldLabel('CÓDIGO DO SUPERVISOR'),
+      PdvFieldLabel('CÓDIGO DO ${noun.toUpperCase()}'),
       const SizedBox(height: 6),
       TextField(
         controller: _loginCtrl,
@@ -423,7 +451,7 @@ class _SangriaDialogState extends State<_SangriaDialog> {
         decoration: pdvInputDecoration(context, hint: '10000001'),
       ),
       const SizedBox(height: 14),
-      const PdvFieldLabel('SENHA DO SUPERVISOR'),
+      PdvFieldLabel('SENHA DO ${noun.toUpperCase()}'),
       const SizedBox(height: 6),
       TextField(
         controller: _pwdCtrl,

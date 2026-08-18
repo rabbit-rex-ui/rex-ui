@@ -8,6 +8,7 @@ import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/caixa_dtos.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/cx_config.dart';
+import 'package:rabbit_pdv/features/pdv/data/dto/movimento_caixa_dtos.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/registrar_venda_response.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/dto/pdv_fisico.dart';
@@ -56,11 +57,15 @@ class CaixaSessionController extends ChangeNotifier {
 
   // ── cx-config (contrato v3 §5) ──
   // Pre-warm não-bloqueante no boot; garantido no open do diálogo de sangria.
-  // maloteHabilitado não muda dentro do turno (mudança só vale no próximo
-  // boot), então uma carga bem-sucedida vale para a sessão toda.
+  // A config não muda dentro do turno (mudança só vale no próximo boot), então
+  // uma carga bem-sucedida vale para a sessão toda.
   CxConfigResponse? _cxConfig;
   CxConfigStatus _cxConfigStatus = CxConfigStatus.desconhecido;
   Future<void>? _cxConfigInFlight;
+
+  // Lista de destinos de sangria já FILTRADA, derivada uma vez a cada carga do
+  // cx-config (não recalculada no build — meta de performance). Ver [_derivarDestinos].
+  List<MovimentoDestino> _destinosSangria = const [];
 
   // ── Semáforo de teto ──
   // Estado corrente do teto, alimentado por vendas e movimentos. Ver [aplicarTeto].
@@ -90,8 +95,17 @@ class CaixaSessionController extends ChangeNotifier {
 
   /// Se o tenant usa o ciclo de malote → controla se o destino COFRE aparece
   /// na sangria. Default fail-safe (false) enquanto o cx-config não resolve.
-  /// É conveniência de UX, não gate: o backend revalida no servidor.
   bool get maloteHabilitado => _cxConfig?.maloteHabilitado ?? false;
+
+  /// Sangria a 4 olhos (contrato v3 §5): se `true`, toda sangria exige o passo
+  /// do fiscal na tela, independente do modo do caixa. Default fail-safe (false).
+  bool get sangriaQuatroOlhos => _cxConfig?.sangriaQuatroOlhos ?? false;
+
+  /// Destinos de sangria a exibir, **já filtrados** para este tenant:
+  /// interseção de `sangriaDestinosHabilitados` com a regra do COFRE (removido
+  /// quando `!maloteHabilitado`). Lista imutável, pronta para a UI desenhar sem
+  /// recalcular. Vazia enquanto o cx-config não resolve → a UI esconde a seção.
+  List<MovimentoDestino> get destinosSangria => _destinosSangria;
 
   /// Estado da carga do cx-config — o diálogo de sangria decide a partir daqui
   /// entre usar o valor, exibir "resolvendo" ou cair no fallback com aviso.
@@ -248,7 +262,8 @@ class CaixaSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Garante que o cx-config esteja resolvido antes de usar [maloteHabilitado].
+  /// Garante que o cx-config esteja resolvido antes de usar [maloteHabilitado],
+  /// [sangriaQuatroOlhos] ou [destinosSangria].
   ///
   /// - Já carregado nesta sessão → retorna imediato (cache do turno).
   /// - Busca em andamento (pre-warm do boot ou outro open) → aguarda a mesma.
@@ -278,9 +293,14 @@ class CaixaSessionController extends ChangeNotifier {
       r.fold(
         onOk: (cfg) {
           _cxConfig = cfg;
+          _destinosSangria = _derivarDestinos(cfg);
           _cxConfigStatus = CxConfigStatus.carregado;
           if (kDebugMode) {
-            debugPrint('[cx-config] malote=${cfg.maloteHabilitado}');
+            debugPrint(
+              '[cx-config] malote=${cfg.maloteHabilitado} '
+              '4olhos=${cfg.sangriaQuatroOlhos} '
+              'destinos=${_destinosSangria.map((d) => d.wire).toList()}',
+            );
           }
         },
         onErr: (f) {
@@ -300,6 +320,14 @@ class CaixaSessionController extends ChangeNotifier {
       _cxConfigInFlight = null;
       notifyListeners();
     }
+  }
+
+  /// Deriva os destinos exibíveis: os habilitados pelo tenant, menos COFRE
+  /// quando o malote está desligado (COFRE só faz sentido alimentando o malote).
+  static List<MovimentoDestino> _derivarDestinos(CxConfigResponse cfg) {
+    return cfg.destinosHabilitados
+        .where((d) => d != MovimentoDestino.cofre || cfg.maloteHabilitado)
+        .toList(growable: false);
   }
 
   void _set(SessionStatus s) {

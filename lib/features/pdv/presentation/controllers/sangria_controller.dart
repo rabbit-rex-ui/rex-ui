@@ -41,8 +41,10 @@ class SangriaController extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  /// Vira `true` quando o backend responde `403 movement-supervisor-required`.
-  /// O diálogo usa isto para revelar os campos de credencial do supervisor.
+  /// `true` quando a sangria exige o passo do fiscal/supervisor. Ligado por
+  /// [exigirFiscal] (antecipação: 4 olhos ou IMMEDIATE conhecido) OU pelo
+  /// `403 movement-supervisor-required` reativo. O diálogo usa isto para
+  /// revelar os campos de credencial — um caminho só para os dois gatilhos.
   bool _requerSupervisor = false;
   bool get requerSupervisor => _requerSupervisor;
 
@@ -95,6 +97,18 @@ class SangriaController extends ChangeNotifier {
 
   void _clearErrorSilencioso() => _errorMessage = null;
 
+  /// Liga o passo do fiscal **de forma antecipada** — antes do primeiro POST —
+  /// quando o diálogo já sabe que ele será exigido (4 olhos, ou caixa IMMEDIATE
+  /// conhecido, e o operador não tem `cx.sangria.supervise`). Idempotente.
+  ///
+  /// Reusa o mesmo `_requerSupervisor` do caminho reativo: a partir daqui, a
+  /// primeira tentativa já envia as credenciais, sem o roundtrip que levaria 403.
+  void exigirFiscal() {
+    if (_requerSupervisor) return;
+    _requerSupervisor = true;
+    notifyListeners();
+  }
+
   /// Busca a sugestão de valor (§4). Só faz sentido em sangria. Silenciosa: um
   /// 404 (sessão não aberta) ou qualquer erro cai em entrada manual, sem ruído.
   /// Pré-preenche o valor só quando há algo a sangrar e o operador ainda não
@@ -142,7 +156,7 @@ class SangriaController extends ChangeNotifier {
       return null;
     }
     if (_requerSupervisor && (loginCode.isEmpty || password.isEmpty)) {
-      _errorMessage = 'Informe o código e a senha do supervisor.';
+      _errorMessage = 'Informe o código e a senha do fiscal.';
       notifyListeners();
       return null;
     }
@@ -194,19 +208,20 @@ class SangriaController extends ChangeNotifier {
         _requerSupervisor = true;
         _errorMessage = null;
       case FailureCodes.stepupInvalidCredential:
-        _errorMessage = 'Código ou senha do supervisor inválidos.';
+        _errorMessage = 'Código ou senha do fiscal inválidos.';
       case FailureCodes.stepupLocked:
         _errorMessage =
-            'Supervisor bloqueado por tentativas. Tente novamente mais tarde.';
+            'Fiscal bloqueado por tentativas. Tente novamente mais tarde.';
       case FailureCodes.stepupDenied:
-        _errorMessage = 'Este supervisor não tem permissão para liberar.';
+        _errorMessage = 'Este fiscal não tem permissão para liberar.';
       case FailureCodes.movementSegregation:
-        _errorMessage =
-            'O supervisor precisa ser diferente do operador do caixa.';
+        _errorMessage = 'O fiscal precisa ser diferente do operador do caixa.';
       case FailureCodes.movementExceedsCash:
         _errorMessage = 'Valor acima do dinheiro disponível no caixa.';
       case FailureCodes.movementReasonRequired:
         _errorMessage = 'Informe o motivo da sangria.';
+      case FailureCodes.destinoNaoHabilitado:
+        _errorMessage = 'Este destino não está habilitado para esta loja.';
       case FailureCodes.sessionClosed:
         _errorMessage = 'O caixa está fechado. Não é possível registrar.';
       case FailureCodes.movementIdempotencyConflict:

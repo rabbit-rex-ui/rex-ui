@@ -39,13 +39,15 @@ abstract final class FailureCodes {
   static const movementReasonRequired =
       'movement-reason-required'; // 422 (WITHDRAWAL sem reason)
   static const movementSupervisorRequired =
-      'movement-supervisor-required'; // 403 (saída Imediata sem supervisor)
+      'movement-supervisor-required'; // 403 (saída Imediata/4-olhos sem fiscal)
   static const movementSegregation =
-      'movement-segregation'; // 403 (supervisor = operador no step-up)
+      'movement-segregation'; // 403 (fiscal = operador no step-up)
   static const movementExceedsCash =
       'movement-exceeds-cash'; // 422 (saída acima do dinheiro em caixa)
   static const invalidArgument =
       'invalid-argument'; // 422 (destino em movimento não-WITHDRAWAL)
+  static const destinoNaoHabilitado =
+      'destino-nao-habilitado'; // 422 (destino fora da lista do tenant)
   static const validationFailed =
       'validation-failed'; // 422 (amount ≤ 0) / 400 (corpo malformado)
 }

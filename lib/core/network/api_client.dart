@@ -55,8 +55,23 @@ class ApiClient {
       final res = await call(_dio);
       return Ok(decode(res.data));
     } on DioException catch (e) {
+      // Diagnóstico cru em debug: a Failure tipada (retornada abaixo) é ótima
+      // para a UI, mas apaga status/método/URL/corpo — que é o que precisamos
+      // ver quando algo dá "Erro inesperado.". Não altera o comportamento.
+      if (kDebugMode) {
+        final o = e.requestOptions;
+        debugPrint(
+          '[api][http-erro] ${o.method} ${o.uri} '
+          '→ type=${e.type} status=${e.response?.statusCode} '
+          'body=${e.response?.data}',
+        );
+      }
       return Err(_mapDioException(e));
-    } on Object catch (e) {
+    } on Object catch (e, st) {
+      // Chegou 2xx mas o decode/parse estourou (corpo inesperado).
+      if (kDebugMode) {
+        debugPrint('[api][parse-erro] $e\n$st');
+      }
       return Err(UnknownFailure('Resposta inválida do servidor.', cause: e));
     }
   }
