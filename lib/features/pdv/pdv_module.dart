@@ -13,6 +13,7 @@ import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_c
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/sessions_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/pages/pdv_page.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/data/pedido_delivery_repository.dart';
 import 'package:rabbit_pdv/features/pagamento/presentation/controllers/payment_session_store.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 
@@ -49,6 +50,9 @@ class PdvModule extends Module {
     );
     i.addSingleton<AssumirCaixaRepository>(
       () => AssumirCaixaRepositoryImpl(i.get<ApiClient>()),
+    );
+    i.addSingleton<PedidoDeliveryRepository>(
+      () => PedidoDeliveryRepositoryImpl(i.get<ApiClient>()),
     );
   }
 

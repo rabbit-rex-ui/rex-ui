@@ -1,13 +1,15 @@
 import 'package:rabbit_pdv/core/failures/failure.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
+import 'package:rabbit_pdv/data/dto/catalog_busca_response.dart';
 import 'package:rabbit_pdv/data/dto/catalog_produto_response.dart';
 import 'package:rabbit_pdv/domain/entities/produto.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
 
-/// Catálogo REAL no scan: `porBarcode` resolve via /catalog/produtos?sku=,
-/// trazendo o `id` UUID do backend. Busca textual e grade de categorias ainda
-/// usam o [_fallback] (mock) até os endpoints existirem.
+/// Catálogo REAL: `porBarcode` resolve via `/catalog/produtos?sku=` (traz o
+/// `id` UUID do backend) e `buscar` via `/catalog/produtos?q=` (busca textual,
+/// lista pura). Categorias / produtos por categoria ainda usam o [_fallback]
+/// (mock) até os endpoints existirem — o delivery não os consome.
 class ProdutosRepositoryImpl implements ProdutosRepository {
   ProdutosRepositoryImpl(this._api, this._fallback);
 
@@ -39,13 +41,24 @@ class ProdutosRepositoryImpl implements ProdutosRepository {
     };
   }
 
-  // ── ainda no mock (sem endpoint documentado) ──
   @override
   Future<Result<List<Produto>, Failure>> buscar(
     String query, {
     int limit = 8,
-  }) => _fallback.buscar(query, limit: limit);
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return const Ok([]);
 
+    return _api.send<List<Produto>>(
+      (dio) => dio.get<dynamic>(
+        '/catalog/produtos',
+        queryParameters: {'q': q, 'limit': limit},
+      ),
+      decode: (data) => catalogBuscaListFromJson(data as List<dynamic>),
+    );
+  }
+
+  // ── ainda no mock (sem endpoint documentado; delivery não usa) ──
   @override
   Future<Result<List<String>, Failure>> categorias() => _fallback.categorias();
 

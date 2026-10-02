@@ -50,4 +50,15 @@ abstract final class FailureCodes {
       'destino-nao-habilitado'; // 422 (destino fora da lista do tenant)
   static const validationFailed =
       'validation-failed'; // 422 (amount ≤ 0) / 400 (corpo malformado)
+
+  // ── Pedido de delivery (/pdv/pedidos) — guia §5. O ProblemDetail NÃO traz
+  //    `code`, só `type`; o ApiClient deriva o code via `_codeFromType`
+  //    (type → UPPER_SNAKE, último segmento). Portanto estes valores DEVEM ser
+  //    o UPPER_SNAKE do sufixo do type — não são literais de corpo. ──
+  static const pedidoTransicaoInvalida =
+      'TRANSICAO_INVALIDA'; // 409 (estado mudou → recarregar)
+  static const pedidoExpedicaoBloqueada =
+      'EXPEDICAO_BLOQUEADA'; // 409 (nota não autorizada → tentar de novo)
+  static const pedidoInvalido =
+      'PEDIDO_INVALIDO'; // 422 (regra de negócio, ex.: concluir sem forma)
 }

@@ -10,6 +10,7 @@ import 'package:rabbit_pdv/core/widgets/app_pill.dart';
 import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/presentation/delivery_page.dart';
 
 class Topbar extends StatelessWidget {
   final ClockController clock;
@@ -34,6 +35,8 @@ class Topbar extends StatelessWidget {
           const SizedBox(width: 14),
           const _ContextoPosto(),
           const Spacer(),
+          const _DeliveryButton(),
+          const SizedBox(width: 14),
           const AppPill(tone: PillTone.success, label: 'Caixa aberto'),
           const SizedBox(width: 14),
           ListenableBuilder(
@@ -99,6 +102,64 @@ class _ContextoPosto extends StatelessWidget {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// Ponto de entrada do workspace de delivery. Visível se o operador puder criar
+/// OU ver pedidos (átomos lidos independentemente do token — nunca inferir um
+/// do outro). O gate por-aba dentro da tela decide o que ele realmente vê.
+class _DeliveryButton extends StatelessWidget {
+  const _DeliveryButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = Modular.get<CaixaSessionController>();
+    return ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        final podeCriar = session.temPermissao('sls.order.create');
+        final podeVer =
+            session.temPermissao('sls.order.view_own') ||
+            session.temPermissao('sls.order.view_all');
+        if (!podeCriar && !podeVer) return const SizedBox.shrink();
+
+        final c = context.colors;
+        return Tooltip(
+          message: 'Delivery',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => showDeliveryDialog(
+              context,
+              podeCriar: podeCriar,
+              podeVer: podeVer,
+              defaultWarehouseId: session.defaultWarehouseId,
+            ),
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: c.accent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.truck, size: 16, color: c.accentInk),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Delivery',
+                    style: AppText.bodySm.copyWith(
+                      color: c.accentInk,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

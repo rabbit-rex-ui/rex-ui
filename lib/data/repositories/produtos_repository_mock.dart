@@ -14,22 +14,22 @@ class ProdutosRepositoryMock implements ProdutosRepository {
   static final List<Produto> _catalogo = [
     // ---- Hortifruti ----
     const Produto(
-      id: 'mock-2000000000017',
-      sku: '2000000000017',
+      id: '97b6f749-adab-382e-bfa6-935a472dda95',
+      sku: 'HORT-001',
       barcode: '2000000000017',
       nome: 'Banana Prata',
       categoria: 'Hortifruti',
-      preco: 6.49,
+      preco: 5.99,
       un: UnidadeMedida.kg,
       estoque: 42,
     ),
     const Produto(
-      id: 'mock-2000000000024',
-      sku: '2000000000024',
+      id: '2cd5f7c3-a7a0-3e5b-bc7f-95526ae59b4d',
+      sku: 'HORT-005',
       barcode: '2000000000024',
       nome: 'Maçã Gala',
       categoria: 'Hortifruti',
-      preco: 9.90,
+      preco: 8.99,
       un: UnidadeMedida.kg,
       estoque: 28,
     ),
@@ -88,8 +88,8 @@ class ProdutosRepositoryMock implements ProdutosRepository {
 
     // ---- Mercearia ----
     const Produto(
-      id: 'mock-7891000244104',
-      sku: '7891000244104',
+      id: 'ce6eaee0-0f31-30bd-b62d-a6bc8ac87d6e',
+      sku: 'MERC-001',
       barcode: '7891000244104',
       nome: 'Arroz Branco T1 5kg',
       categoria: 'Mercearia',
