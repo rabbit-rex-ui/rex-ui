@@ -252,7 +252,7 @@ class _PdvPageState extends State<PdvPage> {
             Expanded(
               child: ListenableBuilder(
                 listenable: sessions,
-                builder: (_, __) {
+                builder: (_, _) {
                   final ativo = sessions.active;
                   if (ativo == null) return const SizedBox.shrink();
                   return Row(

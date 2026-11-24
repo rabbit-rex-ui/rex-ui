@@ -1,11 +1,18 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/features/auth/data/dto/login_dtos.dart';
 
 /// Anexa `Authorization: Bearer <token>` em tudo (exceto endpoints de auth)
 /// e, em 401, tenta UM refresh (single-flight) e refaz a requisição original.
 /// Se o refresh falhar, dispara [onSessionExpired] (bloqueio → login).
+///
+/// Só renova quando o 401 é de SESSÃO: `code: nao_autenticado` ou sem corpo
+/// (legado). 401 com outro `code` é credencial errada — `credenciais_invalidas`
+/// na troca de senha, `stepup-invalid-credential` do supervisor —; renovar e
+/// reenviar só repetiria a tentativa falha (e aproximaria o bloqueio da conta
+/// por tentativas).
 ///
 /// Exceção: requisições marcadas com `extra['skipAuthRefresh'] == true` NÃO
 /// passam pelo refresh. São os endpoints de step-up de supervisor (fechamento
@@ -44,13 +51,14 @@ class AuthInterceptor extends QueuedInterceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    final is401 = err.response?.statusCode == 401;
+    final sessaoExpirada =
+        err.response?.statusCode == 401 && _ehDeSessao(err.response);
     final isAuth = _isAuthEndpoint(err.requestOptions.path);
     final jaTentou = err.requestOptions.extra['__retried'] == true;
     // Opt-in por request: pula o refresh nos fluxos de step-up de supervisor.
     final pulaRefresh = err.requestOptions.extra['skipAuthRefresh'] == true;
 
-    if (!is401 || isAuth || jaTentou || pulaRefresh || _semRefreshToken()) {
+    if (!sessaoExpirada || isAuth || jaTentou || pulaRefresh || _semRefreshToken()) {
       return handler.next(err);
     }
 
@@ -70,6 +78,14 @@ class AuthInterceptor extends QueuedInterceptor {
     } on DioException catch (e) {
       return handler.next(e);
     }
+  }
+
+  /// 401 de sessão: sem `code` no corpo, ou `code: nao_autenticado`.
+  static bool _ehDeSessao(Response<dynamic>? res) {
+    final corpo = res?.data;
+    if (corpo is! Map) return true;
+    final code = corpo['code'];
+    return code == null || code == FailureCodes.naoAutenticado;
   }
 
   bool _semRefreshToken() {

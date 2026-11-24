@@ -27,7 +27,7 @@ class PaymentFooter extends StatelessWidget {
 
     return ListenableBuilder(
       listenable: controller,
-      builder: (_, __) {
+      builder: (_, _) {
         final podeConfirmar = controller.podeConfirmar;
         final bloqueio = controller.motivoBloqueio;
         // No Passo A, "alocado" = total quando há método; senão 0.

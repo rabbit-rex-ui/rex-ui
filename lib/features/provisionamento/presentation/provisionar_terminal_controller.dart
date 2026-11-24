@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:rabbit_pdv/core/failures/failure.dart';
+import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/caixa_fisico_repository.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/device_enrollment_repository.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/dto/device_enrollment_dtos.dart';
@@ -112,10 +113,7 @@ class ProvisionarTerminalController extends ChangeNotifier {
 
   String _mensagemEmissao(Failure f) {
     // 403 aqui = sem iam.device.manage OU estação não confiável (guia §8).
-    if (f is BusinessRuleFailure && f.code == 'SEM_PERMISSAO') {
-      return 'Sem permissão para provisionar, ou esta estação não é confiável.';
-    }
-    if (f is NetworkFailure && f.statusCode == 403) {
+    if (f is BusinessRuleFailure && FailureCodes.ehFaltaDePermissao(f.code)) {
       return 'Sem permissão para provisionar, ou esta estação não é confiável.';
     }
     return f.message;

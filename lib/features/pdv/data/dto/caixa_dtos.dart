@@ -1,3 +1,5 @@
+import 'package:rabbit_pdv/core/json/json_read.dart';
+
 class AbrirCaixaRequest {
   const AbrirCaixaRequest({
     required this.cashRegisterId,
@@ -112,18 +114,18 @@ class CaixaSessionResponse {
         cashRegisterId: (j['cashRegisterId'] as String?) ?? '',
         status: (j['status'] as String?) ?? 'UNKNOWN',
         openedAt: DateTime.parse(j['openedAt'] as String).toLocal(),
-        openingFloat: _d(j['openingFloat']),
-        expectedCash: _d(j['expectedCash']),
+        openingFloat: JsonRead.decimal(j['openingFloat']),
+        expectedCash: JsonRead.decimal(j['expectedCash']),
         openedBy: j['openedBy'] as String?,
         currentCustodianId: j['currentCustodianId'] as String?,
-        closedAt: _dtOpt(j['closedAt']),
+        closedAt: JsonRead.instantOrNull(j['closedAt']),
         closedBy: j['closedBy'] as String?,
-        countedCash: _dOpt(j['countedCash']),
-        cashDifference: _dOpt(j['cashDifference']),
+        countedCash: JsonRead.decimalOrNull(j['countedCash']),
+        cashDifference: JsonRead.decimalOrNull(j['cashDifference']),
         notes: j['notes'] as String?,
-        salesCashTotal: _d(j['salesCashTotal']),
-        reinforcementsTotal: _d(j['reinforcementsTotal']),
-        withdrawalsTotal: _d(j['withdrawalsTotal']),
+        salesCashTotal: JsonRead.decimal(j['salesCashTotal']),
+        reinforcementsTotal: JsonRead.decimal(j['reinforcementsTotal']),
+        withdrawalsTotal: JsonRead.decimal(j['withdrawalsTotal']),
         blindClose: (j['blindClose'] as bool?) ?? false,
       );
 }
@@ -202,9 +204,9 @@ class RelatorioSessao {
     status: (j['status'] as String?) ?? 'UNKNOWN',
     cashRegisterCode: j['cashRegisterCode'] as String?,
     cashRegisterName: j['cashRegisterName'] as String?,
-    openedAt: _dtOpt(j['openedAt']),
+    openedAt: JsonRead.instantOrNull(j['openedAt']),
     openedBy: j['openedBy'] as String?,
-    closedAt: _dtOpt(j['closedAt']),
+    closedAt: JsonRead.instantOrNull(j['closedAt']),
     closedBy: j['closedBy'] as String?,
     duracaoMin: (j['duracaoMin'] as num?)?.toInt(),
   );
@@ -233,13 +235,13 @@ class RelatorioConferencia {
 
   factory RelatorioConferencia.fromJson(Map<String, dynamic> j) =>
       RelatorioConferencia(
-        openingFloat: _d(j['openingFloat']),
-        salesCash: _d(j['salesCash']),
-        reinforcementsTotal: _d(j['reinforcementsTotal']),
-        withdrawalsTotal: _d(j['withdrawalsTotal']),
-        expectedCash: _d(j['expectedCash']),
-        countedCash: _dOpt(j['countedCash']),
-        cashDifference: _dOpt(j['cashDifference']),
+        openingFloat: JsonRead.decimal(j['openingFloat']),
+        salesCash: JsonRead.decimal(j['salesCash']),
+        reinforcementsTotal: JsonRead.decimal(j['reinforcementsTotal']),
+        withdrawalsTotal: JsonRead.decimal(j['withdrawalsTotal']),
+        expectedCash: JsonRead.decimal(j['expectedCash']),
+        countedCash: JsonRead.decimalOrNull(j['countedCash']),
+        cashDifference: JsonRead.decimalOrNull(j['cashDifference']),
         isBlindClose: (j['isBlindClose'] as bool?) ?? false,
       );
 }
@@ -260,8 +262,8 @@ class RelatorioPagamento {
   factory RelatorioPagamento.fromJson(Map<String, dynamic> j) =>
       RelatorioPagamento(
         methodType: (j['methodType'] as String?) ?? '',
-        totalRecebido: _d(j['totalRecebido']),
-        totalTroco: _d(j['totalTroco']),
+        totalRecebido: JsonRead.decimal(j['totalRecebido']),
+        totalTroco: JsonRead.decimal(j['totalTroco']),
         qtdVendas: (j['qtdVendas'] as num?)?.toInt() ?? 0,
       );
 }
@@ -280,8 +282,8 @@ class RelatorioResumoVendas {
   factory RelatorioResumoVendas.fromJson(Map<String, dynamic> j) =>
       RelatorioResumoVendas(
         qtd: (j['qtd'] as num?)?.toInt() ?? 0,
-        totalGeral: _d(j['totalGeral']),
-        ticketMedio: _d(j['ticketMedio']),
+        totalGeral: JsonRead.decimal(j['totalGeral']),
+        ticketMedio: JsonRead.decimal(j['ticketMedio']),
       );
 }
 
@@ -306,28 +308,9 @@ class RelatorioMovimento {
       RelatorioMovimento(
         id: j['id']?.toString() ?? '',
         movementType: (j['movementType'] as String?) ?? '',
-        amount: _d(j['amount']),
+        amount: JsonRead.decimal(j['amount']),
         reason: j['reason'] as String?,
         employeeId: j['employeeId'] as String?,
-        occurredAt: _dtOpt(j['occurredAt']),
+        occurredAt: JsonRead.instantOrNull(j['occurredAt']),
       );
-}
-
-// ─── Helpers de parse ───
-
-double _d(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString()) ?? 0;
-}
-
-double? _dOpt(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
-}
-
-DateTime? _dtOpt(dynamic v) {
-  if (v is String && v.isNotEmpty) return DateTime.parse(v).toLocal();
-  return null;
 }

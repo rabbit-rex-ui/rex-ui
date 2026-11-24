@@ -226,8 +226,10 @@ class PedidoDetalheController extends ChangeNotifier {
         _acaoErro = 'O pedido mudou de estado. Atualizei as ações disponíveis.';
       case FailureCodes.pedidoExpedicaoBloqueada:
         _acaoErro =
-            'Nota fiscal ainda em autorização. Tente expedir novamente em '
-            'alguns segundos.';
+            'A nota fiscal ainda não permite expedir (em autorização, '
+            'rejeitada ou com cancelamento em andamento). Veja o painel da '
+            'nota fiscal.';
+      case FailureCodes.acessoNegado:
       case FailureCodes.semPermissao:
         _acaoErro = 'Você não tem permissão para esta ação.';
       default:

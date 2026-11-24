@@ -1,4 +1,4 @@
-/// Formata hora no padrão `HH:mm:ss`. Usado no relógio da topbar.
+/// Formata datas e horas no padrão brasileiro (fuso local do terminal).
 class TimeFormatter {
   TimeFormatter._();
 
@@ -14,5 +14,12 @@ class TimeFormatter {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
+  }
+
+  /// `dd/MM/yyyy HH:mm`. Ex.: carimbos de eventos e de notas fiscais.
+  static String dataHora(DateTime dt) {
+    final d = dt.day.toString().padLeft(2, '0');
+    final mo = dt.month.toString().padLeft(2, '0');
+    return '$d/$mo/${dt.year} ${hm(dt)}';
   }
 }

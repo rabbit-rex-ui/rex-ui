@@ -8,26 +8,33 @@ import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/pedido_resumo_resp
 import 'package:rabbit_pdv/features/pedidos_delivery/data/pedido_delivery_repository.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_canal.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_status.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/presentation/fila_expedicao_controller.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/presentation/fila_expedicao_view.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedido_detalhe_view.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedido_status_ui.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedidos_lista_controller.dart';
 
-/// Aba "Pedidos": fila paginada por status (guia §4.12) com sub-view de detalhe
-/// empurrada por cima (sem descartar a fila). Carrega no open; recarrega pelo
-/// botão "Recarregar".
+/// Aba "Pedidos": lista paginada (guia §4.12) com sub-view de detalhe por cima.
+/// O filtro é um dropdown de situação (todas as 12). A trilha do fluxo vive no
+/// detalhe do pedido — fluxo é propriedade de um pedido, não da lista.
 class PedidosTab extends StatefulWidget {
   const PedidosTab({super.key});
 
   @override
-  State<PedidosTab> createState() => _PedidosTabState();
+  State<PedidosTab> createState() => PedidosTabState();
 }
 
-class _PedidosTabState extends State<PedidosTab>
+class PedidosTabState extends State<PedidosTab>
     with AutomaticKeepAliveClientMixin {
   late final PedidosListaController _ctrl;
 
   /// Id do pedido aberto no detalhe; null = mostrando a fila.
   String? _abertoId;
+
+  /// Fila de expedição (guia fiscal §7.1): existe enquanto o filtro for
+  /// "Aguardando expedição" — inclusive com um detalhe aberto por cima, para
+  /// a impressão automática da estação não perder nenhuma autorização.
+  FilaExpedicaoController? _fila;
 
   @override
   bool get wantKeepAlive => true;
@@ -35,17 +42,48 @@ class _PedidosTabState extends State<PedidosTab>
   @override
   void initState() {
     super.initState();
-    _ctrl = PedidosListaController(Modular.get<PedidoDeliveryRepository>());
+    _ctrl = PedidosListaController(Modular.get<PedidoDeliveryRepository>())
+      ..addListener(_sincronizarFila);
     _ctrl.recarregar();
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _ctrl
+      ..removeListener(_sincronizarFila)
+      ..dispose();
+    _fila?.dispose();
     super.dispose();
   }
 
-  void _abrir(PedidoResumoResponse p) => setState(() => _abertoId = p.pedidoId);
+  bool get _mostrandoFila => _ctrl.status == PedidoStatus.aguardandoExpedicao;
+
+  /// Cria a fila ao entrar no filtro "Aguardando expedição" e a descarta ao
+  /// sair dele.
+  void _sincronizarFila() {
+    if (_mostrandoFila && _fila == null) {
+      _fila = criarFilaExpedicao();
+    } else if (!_mostrandoFila && _fila != null) {
+      _fila!.dispose();
+      _fila = null;
+    }
+  }
+
+  /// Recarrega a fila. Chamado pelo container quando a aba Pedidos vira visível.
+  /// Se há um detalhe aberto, não recarrega a lista por baixo.
+  void recarregar() {
+    if (!mounted || _abertoId != null) return;
+    final fila = _fila;
+    if (fila != null) {
+      fila.atualizar();
+    } else {
+      _ctrl.recarregar();
+    }
+  }
+
+  void _abrir(PedidoResumoResponse p) => _abrirId(p.pedidoId);
+
+  void _abrirId(String pedidoId) => setState(() => _abertoId = pedidoId);
 
   void _voltar() => setState(() => _abertoId = null);
 
@@ -64,32 +102,46 @@ class _PedidosTabState extends State<PedidosTab>
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _filtros(colors),
+          _barraFiltro(colors),
           Divider(height: 1, color: colors.border),
-          Expanded(child: _conteudo(colors)),
+          Expanded(
+            child: switch (_fila) {
+              final fila? => FilaExpedicaoView(
+                controller: fila,
+                onAbrir: _abrirId,
+              ),
+              null => _conteudo(colors),
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _filtros(AppColors colors) {
+  // ── Barra: filtro de situação + recarregar ──
+  Widget _barraFiltro(AppColors colors) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 12),
       child: Row(
         children: [
-          Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final f in FilaPedido.values)
-                  _chipFila(f, _ctrl.fila == f, colors),
-              ],
-            ),
+          Text(
+            'Filtrar por situação:',
+            style: TextStyle(fontSize: 12.5, color: colors.textMute),
           ),
+          const SizedBox(width: 10),
+          _dropdownSituacao(colors),
+          const SizedBox(width: 10),
+          if (!_mostrandoFila)
+            TextButton.icon(
+              onPressed: () =>
+                  _ctrl.selecionarStatus(PedidoStatus.aguardandoExpedicao),
+              icon: const Icon(LucideIcons.truck, size: 15),
+              label: const Text('Fila de expedição'),
+            ),
+          const Spacer(),
           IconButton(
             tooltip: 'Recarregar',
-            onPressed: _ctrl.loading ? null : _ctrl.recarregar,
+            onPressed: _ctrl.loading ? null : recarregar,
             icon: Icon(LucideIcons.refreshCw, size: 18, color: colors.textMute),
           ),
         ],
@@ -97,26 +149,74 @@ class _PedidosTabState extends State<PedidosTab>
     );
   }
 
-  Widget _chipFila(FilaPedido f, bool selected, AppColors colors) {
-    return GestureDetector(
-      onTap: _ctrl.loading ? null : () => _ctrl.selecionarFila(f),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? colors.accent : colors.surface2,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? colors.accent : colors.border),
+  Widget _dropdownSituacao(AppColors colors) {
+    final atual = _ctrl.status;
+    return PopupMenuButton<PedidoStatus?>(
+      tooltip: 'Filtrar situação',
+      color: colors.surface,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: colors.border),
+      ),
+      onSelected: _ctrl.selecionarStatus,
+      itemBuilder: (context) => [
+        PopupMenuItem<PedidoStatus?>(
+          value: null,
+          child: _itemDropdown('Todas as situações', atual == null, colors),
         ),
-        child: Text(
-          f.label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? colors.accentInk : colors.text,
+        const PopupMenuDivider(),
+        for (final s in PedidoStatus.values)
+          PopupMenuItem<PedidoStatus?>(
+            value: s,
+            child: _itemDropdown(s.label, atual == s, colors),
           ),
+      ],
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: colors.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.listFilter, size: 15, color: colors.textMute),
+            const SizedBox(width: 7),
+            Text(
+              atual == null ? 'Todas as situações' : atual.label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: atual == null ? colors.textMute : colors.text,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(LucideIcons.chevronDown, size: 15, color: colors.textMute),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _itemDropdown(String label, bool selecionado, AppColors colors) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selecionado ? FontWeight.w600 : FontWeight.w500,
+              color: selecionado ? colors.accent : colors.text,
+            ),
+          ),
+        ),
+        if (selecionado)
+          Icon(LucideIcons.check, size: 15, color: colors.accent),
+      ],
     );
   }
 
@@ -280,7 +380,7 @@ class _PedidosTabState extends State<PedidosTab>
           Icon(LucideIcons.inbox, size: 34, color: colors.textDim),
           const SizedBox(height: 10),
           Text(
-            'Nenhum pedido nesta fila',
+            'Nenhum pedido nesta situação',
             style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w600,

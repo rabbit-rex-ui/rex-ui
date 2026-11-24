@@ -1,3 +1,5 @@
+import 'package:rabbit_pdv/core/json/json_read.dart';
+
 class RegistrarVendaResponse {
   const RegistrarVendaResponse({
     required this.vendaId,
@@ -25,12 +27,12 @@ class RegistrarVendaResponse {
       RegistrarVendaResponse(
         vendaId: json['vendaId'] as String,
         saleNumber: (json['saleNumber'] as num).toInt(),
-        subtotal: _money(json['subtotal']),
-        discountAmount: _money(json['discountAmount']),
-        total: _money(json['total']),
-        paidAmount: _money(json['paidAmount']),
-        change: _money(json['change']),
-        finalizedAt: _date(json['finalizedAt']),
+        subtotal: JsonRead.decimal(json['subtotal']),
+        discountAmount: JsonRead.decimal(json['discountAmount']),
+        total: JsonRead.decimal(json['total']),
+        paidAmount: JsonRead.decimal(json['paidAmount']),
+        change: JsonRead.decimal(json['change']),
+        finalizedAt: JsonRead.instant(json['finalizedAt']),
         cashCeilingStatus: CashCeilingStatus.tryParse(
           json['cashCeilingStatus'],
         ),
@@ -65,8 +67,8 @@ class CashCeilingStatus {
       return CashCeilingStatus(
         nivel: _nivel(v['nivel']),
         mode: v['mode'] as String?,
-        ceiling: _moneyOrNull(v['ceiling']),
-        currentCash: _moneyOrNull(v['currentCash']),
+        ceiling: JsonRead.decimalOrNull(v['ceiling']),
+        currentCash: JsonRead.decimalOrNull(v['currentCash']),
       );
     }
     return null;
@@ -74,20 +76,6 @@ class CashCeilingStatus {
 }
 
 // ── helpers ──
-double _money(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString()) ?? 0;
-}
-
-double? _moneyOrNull(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
-}
-
-DateTime _date(dynamic v) => DateTime.parse(v as String).toLocal();
-
 NivelTeto _nivel(dynamic v) => switch ((v ?? '').toString().toUpperCase()) {
   'VERDE' => NivelTeto.verde,
   'AMARELO' => NivelTeto.amarelo,

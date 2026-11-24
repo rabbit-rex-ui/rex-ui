@@ -1,3 +1,4 @@
+import 'package:rabbit_pdv/core/json/json_read.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_status.dart';
 
 /// Resposta de `POST /pdv/pedidos` (guia §4.1). Vale tanto para criação nova
@@ -22,16 +23,7 @@ class CriarPedidoResponse {
         pedidoId: json['pedidoId'] as String,
         orderNumber: (json['orderNumber'] as num).toInt(),
         status: PedidoStatus.fromWire(json['status'] as String),
-        valorEstimado: _money(json['valorEstimado']),
-        criadoEm: _date(json['criadoEm']),
+        valorEstimado: JsonRead.decimal(json['valorEstimado']),
+        criadoEm: JsonRead.instant(json['criadoEm']),
       );
 }
-
-// ── helpers ──
-double _money(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString()) ?? 0;
-}
-
-DateTime _date(dynamic v) => DateTime.parse(v as String).toLocal();

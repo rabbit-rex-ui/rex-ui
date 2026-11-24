@@ -1,3 +1,5 @@
+import 'package:rabbit_pdv/core/json/json_read.dart';
+import 'package:rabbit_pdv/features/fiscal/data/dto/nota_fiscal_resumo.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_canal.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_status.dart';
 
@@ -12,6 +14,8 @@ class PedidoResumoResponse {
     required this.customerName,
     required this.valorEstimado,
     required this.criadoEm,
+    this.vendaId,
+    this.notaFiscal,
   });
 
   final String pedidoId; // UUID
@@ -22,6 +26,11 @@ class PedidoResumoResponse {
   final double valorEstimado;
   final DateTime criadoEm;
 
+  /// Preenchidos depois do faturar (guia fiscal v2.2 §7.1): a fila de
+  /// expedição decide imprimir/expedir sem consultar nota por nota.
+  final String? vendaId;
+  final NotaFiscalResumo? notaFiscal;
+
   factory PedidoResumoResponse.fromJson(Map<String, dynamic> json) =>
       PedidoResumoResponse(
         pedidoId: json['pedidoId'] as String,
@@ -29,47 +38,9 @@ class PedidoResumoResponse {
         status: PedidoStatus.fromWire(json['status'] as String),
         canal: PedidoCanal.fromWire(json['canal'] as String),
         customerName: json['customerName'] as String? ?? '',
-        valorEstimado: _money(json['valorEstimado']),
-        criadoEm: _date(json['criadoEm']),
+        valorEstimado: JsonRead.decimal(json['valorEstimado']),
+        criadoEm: JsonRead.instant(json['criadoEm']),
+        vendaId: json['vendaId'] as String?,
+        notaFiscal: NotaFiscalResumo.fromPedido(json),
       );
 }
-
-/// Envelope de paginação do backend (guia §4.12): `conteudo` + metadados.
-///
-/// Genérico e reusável. Não há um envelope de paginação em `core` hoje; se
-/// outra feature passar a paginar, promover esta classe para `core` em vez de
-/// duplicá-la.
-class PaginaResponse<T> {
-  const PaginaResponse({
-    required this.conteudo,
-    required this.pagina,
-    required this.tamanho,
-    required this.total,
-  });
-
-  final List<T> conteudo;
-  final int pagina;
-  final int tamanho;
-  final int total;
-
-  factory PaginaResponse.fromJson(
-    Map<String, dynamic> json,
-    T Function(Map<String, dynamic>) itemFromJson,
-  ) => PaginaResponse(
-    conteudo: (json['conteudo'] as List<dynamic>? ?? const [])
-        .map((e) => itemFromJson(e as Map<String, dynamic>))
-        .toList(),
-    pagina: (json['pagina'] as num?)?.toInt() ?? 0,
-    tamanho: (json['tamanho'] as num?)?.toInt() ?? 0,
-    total: (json['total'] as num?)?.toInt() ?? 0,
-  );
-}
-
-// ── helpers ──
-double _money(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString()) ?? 0;
-}
-
-DateTime _date(dynamic v) => DateTime.parse(v as String).toLocal();

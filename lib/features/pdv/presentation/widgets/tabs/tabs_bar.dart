@@ -26,7 +26,7 @@ class TabsBar extends StatelessWidget {
       ),
       child: ListenableBuilder(
         listenable: sessions,
-        builder: (_, __) {
+        builder: (_, _) {
           final list = sessions.sessions;
           final activeId = sessions.activeId;
           final canClose = list.length > 1;

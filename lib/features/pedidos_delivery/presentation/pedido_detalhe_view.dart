@@ -3,7 +3,10 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:rabbit_pdv/core/format/brl_formatter.dart';
+import 'package:rabbit_pdv/core/format/time_formatter.dart';
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
+import 'package:rabbit_pdv/features/fiscal/domain/fiscal_permissoes.dart';
+import 'package:rabbit_pdv/features/fiscal/presentation/notas_fiscais_painel.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/widgets/dialogs/pdv_dialog_kit.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/pedido_detalhe_response.dart';
@@ -13,6 +16,7 @@ import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_acao.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_canal.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_status.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedido_detalhe_controller.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedido_fluxo_stepper.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedido_status_ui.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/separar_view.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/unidade_ui.dart';
@@ -47,6 +51,10 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
   /// Sub-tela de separação aberta (§4.3).
   bool _separando = false;
 
+  /// Etapa destacada na trilha do topo para inspeção; null = acompanha a etapa
+  /// atual do pedido (`status`). Fixada quando o operador toca num nó.
+  PedidoStatus? _etapaSelecionada;
+
   /// Formas de pagamento para o concluir NA_ENTREGA (guia §6, texto livre;
   /// enviamos os tokens sugeridos). (rótulo, valor de fio).
   static const List<(String, String)> _formasPagamento = [
@@ -58,21 +66,6 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
 
   /// Ações de exceção que usam o mini-form de motivo.
   static const Set<PedidoAcao> _comMotivo = {
-    PedidoAcao.cancelar,
-    PedidoAcao.naoEntregue,
-    PedidoAcao.pagamentoRecusado,
-    PedidoAcao.devolver,
-  };
-
-  /// Todas implementadas — a Fase 2 está completa.
-  static const Set<PedidoAcao> _wired = {
-    PedidoAcao.confirmar,
-    PedidoAcao.separar,
-    PedidoAcao.conferir,
-    PedidoAcao.faturar,
-    PedidoAcao.expedir,
-    PedidoAcao.entregar,
-    PedidoAcao.concluir,
     PedidoAcao.cancelar,
     PedidoAcao.naoEntregue,
     PedidoAcao.pagamentoRecusado,
@@ -96,6 +89,32 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     _recebidoPorCtrl.dispose();
     _motivoCtrl.dispose();
     super.dispose();
+  }
+
+  // ── Trilha do topo ──
+  PedidoStatus _etapaSel(PedidoDetalheResponse d) =>
+      _etapaSelecionada ?? d.status;
+
+  void _selecionarEtapa(PedidoStatus s) =>
+      setState(() => _etapaSelecionada = s);
+
+  /// Último evento do histórico para uma etapa (null se não houve/ainda não).
+  EventoPedido? _eventoDe(PedidoDetalheResponse d, PedidoStatus etapa) {
+    EventoPedido? achado;
+    for (final e in d.historico) {
+      if (e.status == etapa) achado = e; // último vence
+    }
+    return achado;
+  }
+
+  /// Em pedidos de exceção, a etapa do caminho feliz de onde o pedido saiu
+  /// (`fromStatus` do evento de exceção) — posiciona o nó na trilha.
+  PedidoStatus? _origemExcecao(PedidoDetalheResponse d) {
+    if (!d.status.isExcecao) return null;
+    for (final e in d.historico.reversed) {
+      if (e.status == d.status) return e.fromStatus;
+    }
+    return null;
   }
 
   // ── Ações ──
@@ -191,11 +210,14 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
           );
         }
 
+        final mostraDetalhe = d != null && !_ctrl.loading && _ctrl.erro == null;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _barraTopo(colors),
             Divider(height: 1, color: colors.border),
+            if (mostraDetalhe) _faixaStepper(d, colors),
             Expanded(child: _conteudo(colors)),
             if (d != null && !_ctrl.loading) _rodape(d, colors),
           ],
@@ -231,6 +253,25 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     );
   }
 
+  /// Faixa fixa com a trilha de etapas do pedido (padrão rastreio).
+  Widget _faixaStepper(PedidoDetalheResponse d, AppColors colors) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: PedidoFluxoStepper(
+            statusAtual: d.status,
+            etapaSelecionada: _etapaSel(d),
+            origemExcecao: _origemExcecao(d),
+            onSelecionarEtapa: _selecionarEtapa,
+          ),
+        ),
+        Divider(height: 1, color: colors.border),
+      ],
+    );
+  }
+
   Widget _conteudo(AppColors colors) {
     if (_ctrl.loading) {
       return Center(
@@ -247,12 +288,21 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     if (_ctrl.erro != null) return _erroState(_ctrl.erro!, colors);
     final d = _ctrl.detalhe;
     if (d == null) return const SizedBox.shrink();
+    final vendaId = d.vendaId;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _painelEtapa(d, colors),
+          // A nota nasce no faturar (guia fiscal §7): só há venda depois dele.
+          if (vendaId != null && _session.temPermissao(FiscalPermissoes.ver))
+            NotasFiscaisPainel(
+              key: ValueKey(vendaId),
+              vendaId: vendaId,
+              temPermissao: _session.temPermissao,
+            ),
           _secaoCliente(d, colors),
           const SizedBox(height: 22),
           _secaoEndereco(d, colors),
@@ -264,6 +314,201 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
       ),
     );
   }
+
+  // ── Painel da etapa selecionada na trilha ──
+  Widget _painelEtapa(PedidoDetalheResponse d, AppColors colors) {
+    final etapa = _etapaSel(d);
+    final ui = PedidoStatusUi.of(etapa, colors);
+    final evento = _eventoDe(d, etapa);
+    // "Quando": do evento; fallback para criadoEm no nó Recebido (v1).
+    final quando =
+        evento?.occurredAt ??
+        (etapa == PedidoStatus.recebido ? d.criadoEm : null);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: ui.fg),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Etapa: ${etapa.label}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: colors.text,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (quando != null)
+            _linha('Quando', TimeFormatter.dataHora(quando), colors),
+          if (evento?.responsavel != null)
+            _linha('Responsável', evento!.responsavel!, colors),
+          ..._corpoEtapa(d, etapa, colors),
+          ..._extrasEtapa(etapa, evento, colors),
+        ],
+      ),
+    );
+  }
+
+  /// Conteúdo específico da etapa a partir do snapshot do detalhe (quantidades,
+  /// notas). As linhas temporais (quando/quem) e os extras ficam fora daqui.
+  List<Widget> _corpoEtapa(
+    PedidoDetalheResponse d,
+    PedidoStatus etapa,
+    AppColors colors,
+  ) {
+    switch (etapa) {
+      case PedidoStatus.recebido:
+        return [
+          _linha('Itens', '${d.itens.length}', colors),
+          _linha(
+            'Total estimado',
+            BrlFormatter.format(d.valorEstimado),
+            colors,
+          ),
+        ];
+      case PedidoStatus.confirmando:
+        return [
+          _notaEtapa(
+            'Pedido recebido, aguardando confirmação para iniciar a separação.',
+            colors,
+          ),
+        ];
+      case PedidoStatus.separando:
+      case PedidoStatus.conferido:
+        return _resumoQtd(d, _TipoQtd.separada, colors);
+      case PedidoStatus.aguardandoExpedicao:
+        return _resumoQtd(d, _TipoQtd.faturada, colors);
+      case PedidoStatus.emRota:
+        return [_notaEtapa('Pedido em rota de entrega.', colors)];
+      case PedidoStatus.entregue:
+      case PedidoStatus.concluido:
+      case PedidoStatus.cancelado:
+      case PedidoStatus.naoEntregue:
+      case PedidoStatus.devolvido:
+      case PedidoStatus.pagamentoRecusado:
+        return const []; // tratado por _extrasEtapa
+    }
+  }
+
+  /// Extras por etapa: recebido-por (Entregue), forma de pagamento (Concluído)
+  /// e motivo (exceções). Com fallback para uma nota quando não há evento.
+  List<Widget> _extrasEtapa(
+    PedidoStatus etapa,
+    EventoPedido? evento,
+    AppColors colors,
+  ) {
+    switch (etapa) {
+      case PedidoStatus.entregue:
+        final rp = evento?.recebidoPor;
+        if (rp != null && rp.isNotEmpty) {
+          return [_linha('Recebido por', rp, colors)];
+        }
+        return evento == null
+            ? [_notaEtapa('Pedido entregue ao cliente.', colors)]
+            : const [];
+      case PedidoStatus.concluido:
+        final fp = evento?.formaPagamento;
+        if (fp != null && fp.isNotEmpty) {
+          return [_linha('Pagamento', fp, colors)];
+        }
+        return evento == null
+            ? [_notaEtapa('Pedido concluído.', colors)]
+            : const [];
+      case PedidoStatus.cancelado:
+      case PedidoStatus.naoEntregue:
+      case PedidoStatus.devolvido:
+      case PedidoStatus.pagamentoRecusado:
+        final m = evento?.motivo;
+        if (m != null && m.isNotEmpty) {
+          return [_linha('Motivo', m, colors)];
+        }
+        return evento == null
+            ? [_notaEtapa('Pedido ${etapa.label.toLowerCase()}.', colors)]
+            : const [];
+      default:
+        return const [];
+    }
+  }
+
+  List<Widget> _resumoQtd(
+    PedidoDetalheResponse d,
+    _TipoQtd tipo,
+    AppColors colors,
+  ) {
+    final registrou = d.itens.any(
+      (it) =>
+          (tipo == _TipoQtd.separada ? it.qtySeparada : it.qtyFaturada) != null,
+    );
+    if (!registrou) {
+      return [
+        _notaEtapa(
+          tipo == _TipoQtd.separada
+              ? 'Separação ainda não registrada.'
+              : 'Faturamento ainda não registrado.',
+          colors,
+        ),
+      ];
+    }
+    return [for (final it in d.itens) _itemQtdLinha(it, tipo, colors)];
+  }
+
+  Widget _itemQtdLinha(ItemPedidoDetalhe it, _TipoQtd tipo, AppColors colors) {
+    final unidade = UnidadeUi.rotulo(it.unitOfMeasure);
+    final qtd = tipo == _TipoQtd.separada ? it.qtySeparada : it.qtyFaturada;
+    final valor = qtd == null
+        ? '—'
+        : '${_qtd(qtd, it.isWeighed, unidade)} de '
+              '${_qtd(it.qtySolicitada, it.isWeighed, unidade)}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              '#${it.lineNumber}  ${it.displayNome}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, color: colors.text),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            valor,
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: colors.text,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _notaEtapa(String texto, AppColors colors) => Text(
+    texto,
+    style: TextStyle(fontSize: 12.5, color: colors.textMute, height: 1.4),
+  );
 
   // ── Rodapé: banner de erro + (botões OU mini-form) ──
   Widget _rodape(PedidoDetalheResponse d, AppColors colors) {
@@ -313,9 +558,8 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
   }
 
   Widget _acaoBtn(PedidoAcao a, bool primaria, AppColors colors) {
-    final wired = _wired.contains(a);
     final rodando = _ctrl.acaoEmExecucao == a;
-    final habilitado = wired && !_ctrl.executandoAcao;
+    final habilitado = !_ctrl.executandoAcao;
     final atenuado = !habilitado && !rodando;
 
     final Color bg;
@@ -335,7 +579,7 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
       borda = colors.border;
     }
 
-    final botao = Opacity(
+    return Opacity(
       opacity: atenuado ? 0.5 : 1,
       child: Material(
         color: bg,
@@ -372,8 +616,6 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
         ),
       ),
     );
-
-    return wired ? botao : Tooltip(message: 'Em breve', child: botao);
   }
 
   // ── Mini-forms ──
@@ -456,6 +698,32 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     );
   }
 
+  Widget _formaChip(String label, String valor, AppColors colors) {
+    final sel = _formaSelecionada == valor;
+    return GestureDetector(
+      onTap: _ctrl.executandoAcao
+          ? null
+          : () => setState(() => _formaSelecionada = valor),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: sel ? colors.accent : colors.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: sel ? colors.accent : colors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+            color: sel ? colors.accentInk : colors.text,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _formMotivo(PedidoAcao a, AppColors colors) {
     final opcional = a == PedidoAcao.pagamentoRecusado;
     final destrutivo = a.isDestrutiva;
@@ -503,32 +771,6 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     PedidoAcao.devolver => 'Devolver pedido',
     _ => a.label,
   };
-
-  Widget _formaChip(String label, String valor, AppColors colors) {
-    final sel = _formaSelecionada == valor;
-    return GestureDetector(
-      onTap: _ctrl.executandoAcao
-          ? null
-          : () => setState(() => _formaSelecionada = valor),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: sel ? colors.accent : colors.surface2,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: sel ? colors.accent : colors.border),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-            color: sel ? colors.accentInk : colors.text,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _promptBotoes(
     String confirmar,
@@ -705,10 +947,14 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  it.produtoId,
+                  it.displayNome,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12.5, color: colors.textMute),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: colors.text,
+                  ),
                 ),
               ),
               if (it.itemStatus.isNotEmpty)
@@ -909,3 +1155,6 @@ class _PedidoDetalheViewState extends State<PedidoDetalheView> {
     return unidade.isEmpty ? s : '$s $unidade';
   }
 }
+
+/// Tipo de quantidade exibida no painel de etapa.
+enum _TipoQtd { separada, faturada }

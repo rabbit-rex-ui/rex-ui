@@ -7,12 +7,13 @@ import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/separar_pedido_req
 import 'package:rabbit_pdv/features/pedidos_delivery/data/pedido_delivery_repository.dart';
 
 /// Linha editável da separação (guia §4.3). `qtdSeparada` começa igual à
-/// solicitada; `indisponivel` marca item sem estoque. [unitOfMeasure] é a string
-/// crua do backend (base do rótulo real); [isWeighed] decide o modo decimal.
+/// solicitada; `indisponivel` marca item sem estoque. [nome] é o rótulo legível
+/// (nome → sku → id); [unitOfMeasure] é a string crua (base do rótulo real);
+/// [isWeighed] decide o modo decimal.
 class SepararItemVm {
   const SepararItemVm({
     required this.lineNumber,
-    required this.produtoId,
+    required this.nome,
     required this.qtySolicitada,
     required this.isWeighed,
     required this.unitOfMeasure,
@@ -21,7 +22,7 @@ class SepararItemVm {
   });
 
   final int lineNumber;
-  final String produtoId;
+  final String nome;
   final double qtySolicitada;
   final bool isWeighed;
   final String unitOfMeasure;
@@ -34,7 +35,7 @@ class SepararItemVm {
   SepararItemVm copyWith({double? qtdSeparada, bool? indisponivel}) =>
       SepararItemVm(
         lineNumber: lineNumber,
-        produtoId: produtoId,
+        nome: nome,
         qtySolicitada: qtySolicitada,
         isWeighed: isWeighed,
         unitOfMeasure: unitOfMeasure,
@@ -53,7 +54,7 @@ class SepararController extends ChangeNotifier {
           .map(
             (i) => SepararItemVm(
               lineNumber: i.lineNumber,
-              produtoId: i.produtoId,
+              nome: i.displayNome,
               qtySolicitada: i.qtySolicitada,
               isWeighed: i.isWeighed,
               unitOfMeasure: i.unitOfMeasure,
@@ -126,24 +127,15 @@ class SepararController extends ChangeNotifier {
           )
           .toList(),
     );
-
-    // TEMP debug — instrumentação para diagnosticar o "SOLICITADO no conferir".
-    // Remover quando o fluxo de separação estiver validado.
-    debugPrint('[separar] pedido=$pedidoId payload => ${req.toJson()}');
-
     final result = await _repo.separar(pedidoId, req);
 
     return result.fold<bool>(
       onOk: (_) {
-        // TEMP debug — remover junto com o de cima.
-        debugPrint('[separar] OK pedido=$pedidoId');
         _loading = false;
         notifyListeners();
         return true;
       },
       onErr: (f) {
-        // TEMP debug — remover junto com o de cima.
-        debugPrint('[separar] ERRO pedido=$pedidoId => ${f.message}');
         _loading = false;
         _rotearErro(f);
         notifyListeners();
@@ -164,6 +156,7 @@ class SepararController extends ChangeNotifier {
     switch (f.code) {
       case FailureCodes.pedidoTransicaoInvalida:
         _erro = 'O pedido mudou de estado. Volte e recarregue.';
+      case FailureCodes.acessoNegado:
       case FailureCodes.semPermissao:
         _erro = 'Você não tem permissão para separar.';
       default:

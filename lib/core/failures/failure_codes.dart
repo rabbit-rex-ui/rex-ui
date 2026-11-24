@@ -1,13 +1,47 @@
 /// Códigos de roteamento de BusinessRuleFailure.code (guia §3.3 / §6).
+///
+/// Origem do `code` (ver `ApiClient`): o `code` do corpo quando existe (valor
+/// literal, ex.: `acesso_negado`); senão o sufixo do `type` em UPPER_SNAKE
+/// (ex.: `…/venda-bloqueada` → `VENDA_BLOQUEADA`). O texto do `detail` nunca
+/// decide — é para humanos e pode mudar (respostas do backend v1, §7/§8).
 abstract final class FailureCodes {
-  static const caixaBloqueado = 'CAIXA_BLOQUEADO'; // 409 Imediata (§6.3)
-  static const caixaFechado = 'CAIXA_FECHADO'; // 409
-  static const idempotenciaConflito = 'IDEMPOTENCIA_CONFLITO'; // 409
-  static const exigeSupervisor = 'EXIGE_SUPERVISOR'; // 403 sangria Imediata
-  static const contaBloqueada = 'CONTA_BLOQUEADA'; // 403 login
-  static const semPermissao = 'SEM_PERMISSAO'; // 403 genérico
+  /// 409 da venda com caixa bloqueado pelo teto Imediata (§6.3). Vem do
+  /// `type` `…/venda-bloqueada` (não existe `…/caixa-bloqueado`).
+  static const caixaBloqueado = 'VENDA_BLOQUEADA';
+
+  /// 409 sem `code` nem `type` reconhecível.
+  static const conflito = 'CONFLITO';
+
+  static const semPermissao = 'SEM_PERMISSAO'; // 403 sem code nem type
   static const regraNegocio = 'REGRA_NEGOCIO'; // 422 fallback
-  static const credenciaisInvalidas = 'CREDENCIAIS_INVALIDAS';
+
+  /// 403 por falta de permissão, venha com `code` (`acesso_negado`) ou não.
+  /// Use em vez de comparar com as duas constantes em cada tela.
+  static bool ehFaltaDePermissao(String code) =>
+      code == acessoNegado || code == semPermissao;
+
+  // ── Segurança (401/403 em problem+json, guia fiscal v2.2 §6.4). `code`
+  //    LITERAL do corpo. ──
+  /// 401: token ausente, inválido ou expirado. O `ApiClient` converte em
+  /// `NetworkFailure(statusCode: 401)` — o mesmo sinal de sessão expirada de
+  /// sempre.
+  static const naoAutenticado = 'nao_autenticado';
+  static const acessoNegado = 'acesso_negado'; // 403: papel sem a permissão
+
+  // ── Login e sessão (/auth), guia fiscal v2.3 §6.4. `code` LITERAL. ──
+  /// 401 no login (login ou senha errados) e na troca de senha (senha atual
+  /// errada). NÃO é sessão expirada.
+  static const credenciaisInvalidas = 'credenciais_invalidas';
+  static const contaBloqueada = 'conta_bloqueada'; // 403: pelo administrador
+  static const contaBloqueadaTemporariamente =
+      'conta_bloqueada_temporariamente'; // 403: excesso de tentativas
+  static const semTenantAtivo = 'sem_tenant_ativo'; // 403: sem vínculo
+  static const refreshInvalido = 'refresh_invalido'; // 401 no /auth/refresh
+
+  // ── Ativação de terminal (POST /devices/activate) — 409 com `type` URN;
+  //    roteie pelo `code` literal. ──
+  static const registerAlreadyActive = 'register_already_active';
+  static const deviceFingerprintConflict = 'device_fingerprint_conflict';
 
   // ── Assumir caixa (cx.takeover) — contrato §8. `code` LITERAL do corpo de
   //    erro tipado (NÃO normalizar para UPPER_SNAKE). ──
@@ -61,4 +95,28 @@ abstract final class FailureCodes {
       'EXPEDICAO_BLOQUEADA'; // 409 (nota não autorizada → tentar de novo)
   static const pedidoInvalido =
       'PEDIDO_INVALIDO'; // 422 (regra de negócio, ex.: concluir sem forma)
+
+  // ── Notas fiscais (/fis/notas) — guia fiscal v2.0 §6. Mesma regra do
+  //    delivery: UPPER_SNAKE do sufixo do `type` (sem `code` no corpo). 403 é
+  //    o `acessoNegado` acima. 404 vira
+  //    NotFoundFailure, 400 vira ValidationFailure e 503
+  //    (`provedor-fiscal-indisponivel`) vira NetworkFailure(statusCode: 503) —
+  //    por isso não têm constante aqui. ──
+  static const vendaSemPedidoDeNota = 'VENDA_SEM_PEDIDO_DE_NOTA'; // 409
+  static const notaFiscalAtivaExistente = 'NOTA_FISCAL_ATIVA_EXISTENTE'; // 409
+  static const configuracaoFiscalAusente = 'CONFIGURACAO_FISCAL_AUSENTE'; // 422
+  static const notaNaoCancelavel = 'NOTA_NAO_CANCELAVEL'; // 409
+  static const transicaoNotaInvalida = 'TRANSICAO_NOTA_INVALIDA'; // 409
+  static const prazoCancelamentoExpirado =
+      'PRAZO_CANCELAMENTO_EXPIRADO'; // 422 (prazo local ou cStat 501)
+  static const mercadoriaJaCirculou = 'MERCADORIA_JA_CIRCULOU'; // 422
+  static const cancelamentoRejeitadoSefaz =
+      'CANCELAMENTO_REJEITADO_SEFAZ'; // 422 (outra recusa da SEFAZ)
+
+  // ── Impressão fiscal — códigos LOCAIS (não vêm do backend). ──
+  /// Terminal sem térmica escolhida no diálogo "Impressoras".
+  static const impressoraNaoConfigurada = 'IMPRESSORA_NAO_CONFIGURADA';
+
+  /// Nota não autorizada ou com cancelamento em andamento (guia §9.4).
+  static const notaNaoImprimivel = 'NOTA_NAO_IMPRIMIVEL';
 }

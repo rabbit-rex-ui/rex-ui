@@ -1,5 +1,5 @@
 /// Resultado tipado (ADR-0004). `T` = sucesso, `F` = falha.
-/// Repositórios retornam Future<Result<T, Failure>>; a UI faz switch ou fold.
+/// Repositórios retornam `Future<Result<T, Failure>>`; a UI faz switch ou fold.
 sealed class Result<T, F> {
   const Result();
 

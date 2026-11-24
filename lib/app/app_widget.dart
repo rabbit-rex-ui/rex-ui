@@ -14,7 +14,7 @@ class AppWidget extends StatelessWidget {
     final lock = Modular.get<LockController>();
     return ListenableBuilder(
       listenable: theme,
-      builder: (_, __) {
+      builder: (_, _) {
         return MaterialApp.router(
           title: 'Rabbit PDV',
           debugShowCheckedModeBanner: false,
@@ -25,7 +25,7 @@ class AppWidget extends StatelessWidget {
           builder: (context, child) {
             return ListenableBuilder(
               listenable: lock,
-              builder: (_, __) => Stack(
+              builder: (_, _) => Stack(
                 children: [
                   child ?? const SizedBox.shrink(),
                   if (lock.locked) const Positioned.fill(child: LockOverlay()),

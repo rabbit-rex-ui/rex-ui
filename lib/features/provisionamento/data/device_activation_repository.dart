@@ -1,4 +1,5 @@
 import 'package:rabbit_pdv/core/failures/failure.dart';
+import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
 import 'package:rabbit_pdv/features/provisionamento/data/dto/device_activation_dtos.dart';
@@ -32,10 +33,20 @@ class DeviceActivationRepositoryImpl implements DeviceActivationRepository {
         code: 'ENROLLMENT_INVALIDO',
       );
     }
-    if (f is NetworkFailure && f.statusCode == 409) {
+    // 409 com `type` URN: roteia pelo `code` literal do corpo.
+    if (f is BusinessRuleFailure &&
+        f.code == FailureCodes.registerAlreadyActive) {
       return const BusinessRuleFailure(
         'Este caixa já possui um terminal ativo.',
         code: 'CAIXA_JA_ATIVO',
+      );
+    }
+    if (f is BusinessRuleFailure &&
+        f.code == FailureCodes.deviceFingerprintConflict) {
+      return const BusinessRuleFailure(
+        'A chave deste terminal já está registrada em outro caixa. Revogue o '
+        'terminal antigo no back-office antes de ativar.',
+        code: 'DISPOSITIVO_JA_REGISTRADO',
       );
     }
     if (f is NetworkFailure && f.statusCode == 410) {

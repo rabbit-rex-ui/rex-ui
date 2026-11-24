@@ -28,7 +28,7 @@ class PaymentItemsPanel extends StatelessWidget {
       clipBehavior: Clip.hardEdge,
       child: ListenableBuilder(
         listenable: controller,
-        builder: (_, __) {
+        builder: (_, _) {
           final itens = controller.atendimento.itens;
           final ativo = controller.activeSlice;
           final n = itens.length;
@@ -68,7 +68,7 @@ class PaymentItemsPanel extends StatelessWidget {
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   itemCount: itens.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       Divider(color: c.borderSoft, height: 1),
                   itemBuilder: (_, i) {
                     final it = itens[i];

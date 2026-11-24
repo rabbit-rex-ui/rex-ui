@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:rabbit_pdv/core/theme/app_colors.dart';
-import 'package:rabbit_pdv/core/theme/app_text.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/novo_pedido_form.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/pedidos_tab.dart';
 
@@ -59,30 +58,36 @@ class _DeliveryDialog extends StatefulWidget {
   State<_DeliveryDialog> createState() => _DeliveryDialogState();
 }
 
-class _DeliveryDialogState extends State<_DeliveryDialog>
-    with TickerProviderStateMixin {
+class _DeliveryDialogState extends State<_DeliveryDialog> {
   late final List<_DeliveryTab> _abas = [
     if (widget.podeCriar) _DeliveryTab.criar,
     if (widget.podeVer) _DeliveryTab.pedidos,
   ];
 
-  TabController? _tabs;
+  /// Key para acionar a recarga da fila quando a aba Pedidos fica ativa.
+  final _pedidosKey = GlobalKey<PedidosTabState>();
+
+  int _ativa = 0;
 
   @override
   void initState() {
     super.initState();
-    if (_abas.length > 1) {
-      _tabs = TabController(length: _abas.length, vsync: this);
+    if (_abas.isNotEmpty && _abas[_ativa] == _DeliveryTab.pedidos) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _recarregarFila());
     }
   }
 
-  @override
-  void dispose() {
-    _tabs?.dispose();
-    super.dispose();
+  void _fechar() => Navigator.of(context).pop();
+
+  void _selecionar(int i) {
+    if (i == _ativa) return;
+    setState(() => _ativa = i);
+    if (_abas[i] == _DeliveryTab.pedidos) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _recarregarFila());
+    }
   }
 
-  void _fechar() => Navigator.of(context).pop();
+  void _recarregarFila() => _pedidosKey.currentState?.recarregar();
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +114,6 @@ class _DeliveryDialogState extends State<_DeliveryDialog>
               child: Column(
                 children: [
                   _header(colors),
-                  Divider(height: 1, color: colors.border),
                   Expanded(child: _corpo(colors)),
                 ],
               ),
@@ -121,8 +125,9 @@ class _DeliveryDialogState extends State<_DeliveryDialog>
   }
 
   Widget _header(AppColors colors) {
+    final multiAbas = _abas.length > 1;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 18, 16, 0),
+      padding: EdgeInsets.fromLTRB(24, 18, 16, multiAbas ? 0 : 18),
       child: Column(
         children: [
           Row(
@@ -166,31 +171,88 @@ class _DeliveryDialogState extends State<_DeliveryDialog>
               ),
             ],
           ),
-          if (_tabs != null) ...[
-            const SizedBox(height: 8),
-            TabBar(
-              controller: _tabs,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelColor: colors.accent,
-              unselectedLabelColor: colors.textMute,
-              indicatorColor: colors.accent,
-              indicatorWeight: 2,
-              labelStyle: AppText.bodySm.copyWith(fontWeight: FontWeight.w600),
-              tabs: [for (final a in _abas) Tab(text: _tabLabel(a))],
-            ),
-          ] else
-            const SizedBox(height: 18),
+          if (multiAbas) ...[const SizedBox(height: 10), _tabBar(colors)],
         ],
+      ),
+    );
+  }
+
+  /// Barra de abas estilo fichário. Sem `Stack`: um `Container` com borda
+  /// inferior (linha de base da faixa) e um `Row` de abas ancoradas embaixo.
+  ///
+  /// A aba ATIVA é a destacada — mais alta, preenchida com `surface2`, borda e
+  /// ícone em accent; a INATIVA fica achatada, transparente e muda. (O esquema
+  /// anterior pintava a ativa com `surface`, igual ao fundo do cabeçalho, e por
+  /// isso ela ficava invisível: via-se só a inativa, com o rótulo oposto ao
+  /// conteúdo.)
+  Widget _tabBar(AppColors colors) {
+    return Container(
+      height: 37,
+      width: double.infinity,
+      alignment: Alignment.bottomLeft,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.border)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < _abas.length; i++) ...[
+            _tab(_abas[i], i == _ativa, () => _selecionar(i), colors),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _tab(
+    _DeliveryTab aba,
+    bool ativa,
+    VoidCallback onTap,
+    AppColors colors,
+  ) {
+    final fg = ativa ? colors.text : colors.textMute;
+    return GestureDetector(
+      onTap: ativa ? null : onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        height: ativa ? 36 : 30,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: ativa ? colors.surface2 : Colors.transparent,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(9),
+            topRight: Radius.circular(9),
+          ),
+          // Borda uniforme (borda não-uniforme + borderRadius estoura no paint).
+          border: Border.all(color: ativa ? colors.border : Colors.transparent),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_tabIcon(aba), size: 15, color: ativa ? colors.accent : fg),
+            const SizedBox(width: 7),
+            Text(
+              _tabLabel(aba),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: ativa ? FontWeight.w600 : FontWeight.w500,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _corpo(AppColors colors) {
     if (_abas.isEmpty) return _semAcesso(colors);
-    if (_tabs == null) return _painel(_abas.single);
-    return TabBarView(
-      controller: _tabs,
+    return IndexedStack(
+      index: _ativa.clamp(0, _abas.length - 1),
       children: [for (final a in _abas) _painel(a)],
     );
   }
@@ -199,7 +261,7 @@ class _DeliveryDialogState extends State<_DeliveryDialog>
     _DeliveryTab.criar => NovoPedidoForm(
       defaultWarehouseId: widget.defaultWarehouseId,
     ),
-    _DeliveryTab.pedidos => const PedidosTab(),
+    _DeliveryTab.pedidos => PedidosTab(key: _pedidosKey),
   };
 
   Widget _semAcesso(AppColors colors) {
@@ -230,6 +292,11 @@ class _DeliveryDialogState extends State<_DeliveryDialog>
       ),
     );
   }
+
+  IconData _tabIcon(_DeliveryTab a) => switch (a) {
+    _DeliveryTab.criar => LucideIcons.packagePlus,
+    _DeliveryTab.pedidos => LucideIcons.clipboardList,
+  };
 
   String _tabLabel(_DeliveryTab a) => switch (a) {
     _DeliveryTab.criar => 'Novo pedido',

@@ -167,12 +167,13 @@ class _SepararViewState extends State<SepararView> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        i.produtoId,
+                        i.nome,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12.5,
-                          color: colors.textMute,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          color: colors.text,
                         ),
                       ),
                     ),

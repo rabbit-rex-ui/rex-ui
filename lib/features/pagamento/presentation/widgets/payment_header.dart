@@ -177,7 +177,7 @@ class PaymentItemsList extends StatelessWidget {
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 6),
               itemCount: itens.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   Divider(color: c.borderSoft, height: 1),
               itemBuilder: (_, i) {
                 final it = itens[i];

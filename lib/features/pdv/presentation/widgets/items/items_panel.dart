@@ -159,7 +159,7 @@ class _ItemsPanelState extends State<ItemsPanel> {
           Expanded(
             child: ListenableBuilder(
               listenable: widget.view,
-              builder: (_, __) {
+              builder: (_, _) {
                 return widget.view.value == ItemsView.carrinho
                     ? CartList(
                         items: widget.session.itens,

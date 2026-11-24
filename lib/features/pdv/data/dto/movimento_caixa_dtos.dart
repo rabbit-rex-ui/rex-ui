@@ -1,3 +1,4 @@
+import 'package:rabbit_pdv/core/json/json_read.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/registrar_venda_response.dart';
 
 /// Tipos de movimento de caixa criáveis pelo PDV (contrato v3 §3.1).
@@ -146,17 +147,17 @@ class MovimentoCaixaResponse {
 
   factory MovimentoCaixaResponse.fromJson(Map<String, dynamic> j) =>
       MovimentoCaixaResponse(
-        id: _intOf(j['id']),
+        id: JsonRead.integer(j['id']),
         sessionId: (j['sessionId'] as String?) ?? '',
         tipo: (j['tipo'] as String?) ?? '',
-        amount: _money(j['amount']),
+        amount: JsonRead.decimal(j['amount']),
         reason: j['reason'] as String?,
         authorizedBy: j['authorizedBy'] as String?,
         referenceType: j['referenceType'] as String?,
         referenceId: j['referenceId']?.toString(),
         idempotencyKey: j['idempotencyKey'] as String?,
-        occurredAt: _dateOpt(j['occurredAt']),
-        createdAt: _dateOpt(j['createdAt']),
+        occurredAt: JsonRead.instantOrNull(j['occurredAt']),
+        createdAt: JsonRead.instantOrNull(j['createdAt']),
         cashCeilingStatus: CashCeilingStatus.tryParse(j['cashCeilingStatus']),
       );
 }
@@ -208,37 +209,12 @@ class SugestaoSangriaResponse {
   factory SugestaoSangriaResponse.fromJson(Map<String, dynamic> j) =>
       SugestaoSangriaResponse(
         sessionId: (j['sessionId'] as String?) ?? '',
-        cashLive: _money(j['cashLive']),
-        alvo: _money(j['alvo']),
-        suggestedRaw: _money(j['suggestedRaw']),
-        suggestedRounded: _money(j['suggestedRounded']),
+        cashLive: JsonRead.decimal(j['cashLive']),
+        alvo: JsonRead.decimal(j['alvo']),
+        suggestedRaw: JsonRead.decimal(j['suggestedRaw']),
+        suggestedRounded: JsonRead.decimal(j['suggestedRounded']),
         sangriaRecomendada: (j['sangriaRecomendada'] as bool?) ?? false,
-        ceiling: _moneyOrNull(j['ceiling']),
+        ceiling: JsonRead.decimalOrNull(j['ceiling']),
         ceilingMode: j['ceilingMode'] as String?,
       );
-}
-
-// ─── Helpers de parse ───
-
-int _intOf(dynamic v) {
-  if (v is int) return v;
-  if (v is num) return v.toInt();
-  return int.tryParse(v?.toString() ?? '') ?? 0;
-}
-
-double _money(dynamic v) {
-  if (v == null) return 0;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString()) ?? 0;
-}
-
-double? _moneyOrNull(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
-}
-
-DateTime? _dateOpt(dynamic v) {
-  if (v is String && v.isNotEmpty) return DateTime.parse(v).toLocal();
-  return null;
 }

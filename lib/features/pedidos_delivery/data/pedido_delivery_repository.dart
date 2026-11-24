@@ -1,9 +1,10 @@
-import 'package:dio/dio.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
+import 'package:rabbit_pdv/core/json/pagina_response.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/criar_pedido_request.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/criar_pedido_response.dart';
+import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/faturar_pedido_response.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/motivo_pedido_request.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/pedido_detalhe_response.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/pedido_resumo_response.dart';
@@ -64,8 +65,9 @@ abstract interface class PedidoDeliveryRepository {
 
   /// POST /pdv/pedidos/{id}/faturar → CONFERIDO → AGUARDANDO_EXPEDICAO
   /// (guia §4.5). Materializa a venda e dispara a emissão da nota de forma
-  /// assíncrona. Requer `sls.order.invoice`.
-  Future<Result<void, Failure>> faturar(String id);
+  /// assíncrona; responde 200 com o `vendaId` (guia fiscal v2.2 §7 — era 204).
+  /// Requer `sls.order.invoice`.
+  Future<Result<FaturarPedidoResponse, Failure>> faturar(String id);
 
   /// POST /pdv/pedidos/{id}/expedir → AGUARDANDO_EXPEDICAO → EM_ROTA
   /// (guia §4.6). Gate fiscal: se a nota ainda não está autorizada, retorna
@@ -134,7 +136,7 @@ class PedidoDeliveryRepositoryImpl implements PedidoDeliveryRepository {
       (dio) => dio.post<dynamic>(
         '/pdv/pedidos',
         data: request.toJson(),
-        options: Options(headers: {'Idempotency-Key': idempotencyKey}),
+        options: ApiClient.idempotent(idempotencyKey),
       ),
       decode: (data) =>
           CriarPedidoResponse.fromJson(data as Map<String, dynamic>),
@@ -193,8 +195,13 @@ class PedidoDeliveryRepositoryImpl implements PedidoDeliveryRepository {
       _transicaoSemCorpo(id, 'conferir');
 
   @override
-  Future<Result<void, Failure>> faturar(String id) =>
-      _transicaoSemCorpo(id, 'faturar');
+  Future<Result<FaturarPedidoResponse, Failure>> faturar(String id) {
+    return _api.send<FaturarPedidoResponse>(
+      (dio) => dio.post<dynamic>('/pdv/pedidos/$id/faturar'),
+      decode: (data) =>
+          FaturarPedidoResponse.fromJson(data as Map<String, dynamic>),
+    );
+  }
 
   @override
   Future<Result<void, Failure>> expedir(String id) =>

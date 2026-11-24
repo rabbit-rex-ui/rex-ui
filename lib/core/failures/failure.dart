@@ -43,10 +43,27 @@ class StorageFailure extends Failure {
 class BusinessRuleFailure extends Failure {
   /// Código curto pra roteamento na UI ("CAIXA_BLOQUEADO", "INDISPONIVEL").
   final String code;
-  const BusinessRuleFailure(super.message, {required this.code, super.cause});
+
+  /// Membros extras do ProblemDetail (RFC 9457 §3.2), além de type/title/
+  /// status/detail/instance/code. Ex.: as recusas de cancelamento de nota
+  /// trazem `motivo` e `orientacao`. Vazio quando o corpo não tem extras.
+  final Map<String, Object?> details;
+
+  const BusinessRuleFailure(
+    super.message, {
+    required this.code,
+    this.details = const {},
+    super.cause,
+  });
+
+  /// Extra textual do ProblemDetail, ou `null` se ausente/vazio.
+  String? detailText(String key) {
+    final v = details[key];
+    return v is String && v.trim().isNotEmpty ? v : null;
+  }
 
   @override
-  List<Object?> get props => [...super.props, code];
+  List<Object?> get props => [...super.props, code, details];
 }
 
 class HardwareFailure extends Failure {

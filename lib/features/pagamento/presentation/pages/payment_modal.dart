@@ -28,10 +28,10 @@ Future<List<Pagamento>?> showPaymentModal(
     barrierLabel: 'Modal de pagamento',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 180),
-    pageBuilder: (_, __, ___) {
+    pageBuilder: (_, _, _) {
       return _PaymentModal(controller: controller, onCancelSave: onCancelSave);
     },
-    transitionBuilder: (_, anim, __, child) {
+    transitionBuilder: (_, anim, _, child) {
       final eased = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
       return FadeTransition(
         opacity: eased,

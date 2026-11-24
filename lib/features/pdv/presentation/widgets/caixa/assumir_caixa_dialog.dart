@@ -63,7 +63,7 @@ Future<AssumirCaixaOutcome?> showAssumirCaixaWith(
     barrierLabel: 'Assumir caixa',
     barrierColor: Colors.black54,
     transitionDuration: const Duration(milliseconds: 150),
-    pageBuilder: (ctx, _, __) => _AssumirCaixaDialog(
+    pageBuilder: (ctx, _, _) => _AssumirCaixaDialog(
       controller: controller,
       cartRef: cartRef,
       cartItemCount: cartItemCount,

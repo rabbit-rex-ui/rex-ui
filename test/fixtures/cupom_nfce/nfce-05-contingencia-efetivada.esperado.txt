@@ -1,0 +1,39 @@
+            Mercado Rabbit Rex LTDA
+     CNPJ 83.876.972/0001-71  IE 109876543
+ Avenida Goiás, 1000, Setor Central, Goiânia -
+               GO, CEP 74005-010
+Documento Auxiliar da Nota Fiscal de Consumidor
+                   Eletrônica
+            EMITIDA EM CONTINGÊNCIA
+------------------------------------------------
+001 Arroz Tipo 1 5kg
+MERC-002  2 UN x 24,90                     49,80
+    desconto                               -2,00
+002 Banana Prata
+HORT-001  1,235 KG x 5,99                   7,40
+003 Refrigerante Cola 2L
+BEB-010  1 UN x 9,49                        9,49
+------------------------------------------------
+Qtde. total de itens                           3
+Valor total R$                             66,69
+Descontos R$                               -2,00
+Valor a pagar R$                           64,69
+FORMA DE PAGAMENTO                 VALOR PAGO R$
+Dinheiro                                   70,00
+Troco R$                                    5,31
+------------------------------------------------
+        Consulte pela Chave de Acesso em
+   https://mock.focusnfe.local/nfce/consulta
+  5226 1183 8769 7200 0171 6500 1000 0001 0594
+                   4444 4440
+      [ QR CODE >= 25 mm com o conteúdo de
+              infNFeSupl/qrCode ]
+          CONSUMIDOR NÃO IDENTIFICADO
+         NFC-e nº 000.000.105 Série 001
+              19/11/2026 11:03:27
+   Protocolo de autorização: 152260000000105
+    Data de autorização: 19/11/2026 11:41:05
+            EMITIDA EM CONTINGÊNCIA
+------------------------------------------------
+ EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR
+                     FISCAL

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
+import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
 import 'package:rabbit_pdv/features/pdv/data/dto/anular_item_dtos.dart';
@@ -43,7 +44,13 @@ class AnulacaoRepositoryImpl implements AnulacaoRepository {
   Failure _traduzir(Failure f) {
     // ApiClient mapeia 401 → NetworkFailure('Sessão expirada'). No /anular,
     // 401 = login/senha do supervisor inválidos.
-    if (f is NetworkFailure && f.statusCode == 401) {
+    // 401 com `code` de step-up (ou sem corpo, legado) = credencial do
+    // supervisor inválida.
+    final supervisorInvalido =
+        (f is NetworkFailure && f.statusCode == 401) ||
+        (f is BusinessRuleFailure &&
+            f.code == FailureCodes.stepupInvalidCredential);
+    if (supervisorInvalido) {
       return const BusinessRuleFailure(
         'Código ou senha do supervisor inválidos.',
         code: 'SUPERVISOR_INVALIDO',

@@ -85,20 +85,32 @@ class AuthRepositoryImpl implements AuthRepository {
     return refined;
   }
 
+  /// Mensagens do login por `code` (guia fiscal v2.3 §6.4) — nunca pelo
+  /// texto. O `code` é preservado para quem quiser rotear.
   Failure _refineLoginFailure(Failure f) {
+    // Backend anterior ao v2.3: 401 sem corpo. No login, 401 nunca é sessão.
     if (f is NetworkFailure && f.statusCode == 401) {
       return const BusinessRuleFailure(
         'Código de login ou senha inválidos.',
         code: FailureCodes.credenciaisInvalidas,
       );
     }
-    if (f is BusinessRuleFailure && f.code == FailureCodes.contaBloqueada) {
-      return BusinessRuleFailure(
-        '${f.message} Procure o supervisor.',
-        code: f.code,
-      );
-    }
-    return f;
+    if (f is! BusinessRuleFailure) return f;
+    final mensagem = switch (f.code) {
+      FailureCodes.credenciaisInvalidas => 'Código de login ou senha inválidos.',
+      FailureCodes.contaBloqueada =>
+        'Conta bloqueada. Procure o administrador.',
+      FailureCodes.contaBloqueadaTemporariamente =>
+        'Conta bloqueada temporariamente por excesso de tentativas. Tente '
+            'mais tarde ou redefina a senha.',
+      FailureCodes.semTenantAtivo =>
+        'Seu usuário não tem vínculo ativo com esta loja. Procure o '
+            'administrador.',
+      _ => null,
+    };
+    return mensagem == null
+        ? f
+        : BusinessRuleFailure(mensagem, code: f.code, cause: f);
   }
 
   void _reportar(Failure f) {

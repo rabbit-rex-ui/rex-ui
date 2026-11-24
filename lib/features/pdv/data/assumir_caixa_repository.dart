@@ -43,11 +43,11 @@ class AssumirCaixaRepositoryImpl implements AssumirCaixaRepository {
     );
   }
 
-  /// O 403 vem sem corpo (barrado no SecurityFilterChain) → o ApiClient o reduz
-  /// a `SEM_PERMISSAO`; aqui dou contexto de posse. Os demais já chegam roteáveis
-  /// pelo `code` estável do corpo de erro tipado (contrato §8) → passam direto.
+  /// 403 de permissão (`acesso_negado`, ou sem corpo no legado): dou contexto
+  /// de posse. Os demais já chegam roteáveis pelo `code` estável do corpo de
+  /// erro tipado (contrato §8) → passam direto.
   Failure _traduzir(Failure f) {
-    if (f is BusinessRuleFailure && f.code == FailureCodes.semPermissao) {
+    if (f is BusinessRuleFailure && FailureCodes.ehFaltaDePermissao(f.code)) {
       return const BusinessRuleFailure(
         'Você não tem permissão para assumir o caixa (cx.takeover).',
         code: FailureCodes.semPermissao,

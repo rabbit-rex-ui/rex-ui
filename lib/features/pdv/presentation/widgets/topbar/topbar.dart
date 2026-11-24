@@ -8,6 +8,8 @@ import 'package:rabbit_pdv/core/theme/app_text.dart';
 import 'package:rabbit_pdv/core/widgets/app_brand.dart';
 import 'package:rabbit_pdv/core/widgets/app_pill.dart';
 import 'package:rabbit_pdv/features/auth/domain/sessao_atual.dart';
+import 'package:rabbit_pdv/features/fiscal/domain/fiscal_permissoes.dart';
+import 'package:rabbit_pdv/features/fiscal/presentation/notas_fiscais_menu.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/caixa_session_controller.dart';
 import 'package:rabbit_pdv/features/pdv/presentation/controllers/ui_controllers.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/presentation/delivery_page.dart';
@@ -35,13 +37,14 @@ class Topbar extends StatelessWidget {
           const SizedBox(width: 14),
           const _ContextoPosto(),
           const Spacer(),
+          const _NotasFiscaisEntrada(),
           const _DeliveryButton(),
           const SizedBox(width: 14),
           const AppPill(tone: PillTone.success, label: 'Caixa aberto'),
           const SizedBox(width: 14),
           ListenableBuilder(
             listenable: clock,
-            builder: (_, __) {
+            builder: (_, _) {
               return Text(
                 TimeFormatter.hms(clock.now),
                 style: AppText.monoMd.copyWith(
@@ -75,7 +78,7 @@ class _ContextoPosto extends StatelessWidget {
 
     return ListenableBuilder(
       listenable: Listenable.merge([sessao, caixaSession]),
-      builder: (_, __) {
+      builder: (_, _) {
         final me = sessao.me;
         final loja = me?.tenantName ?? '';
         final caixa = caixaSession.caixaLabel;
@@ -166,6 +169,28 @@ class _DeliveryButton extends StatelessWidget {
   }
 }
 
+/// Menu "Notas fiscais" (atenção + impressoras). Só para quem vê notas.
+class _NotasFiscaisEntrada extends StatelessWidget {
+  const _NotasFiscaisEntrada();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = Modular.get<CaixaSessionController>();
+    return ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        if (!session.temPermissao(FiscalPermissoes.ver)) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: NotasFiscaisBotao(temPermissao: session.temPermissao),
+        );
+      },
+    );
+  }
+}
+
 class _ThemeToggleButton extends StatelessWidget {
   final ThemeController theme;
 
@@ -176,7 +201,7 @@ class _ThemeToggleButton extends StatelessWidget {
     final c = context.colors;
     return ListenableBuilder(
       listenable: theme,
-      builder: (_, __) {
+      builder: (_, _) {
         return Tooltip(
           message: theme.dark ? 'Modo claro' : 'Modo escuro',
           child: InkWell(

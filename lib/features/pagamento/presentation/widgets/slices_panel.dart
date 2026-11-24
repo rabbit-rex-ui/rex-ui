@@ -24,7 +24,7 @@ class SlicesPanel extends StatelessWidget {
 
     return ListenableBuilder(
       listenable: controller,
-      builder: (_, __) {
+      builder: (_, _) {
         final slices = controller.slices;
         final alocado = controller.alocado;
         final fechado = (alocado - controller.total).abs() < 0.005;
@@ -55,7 +55,7 @@ class SlicesPanel extends StatelessWidget {
             Expanded(
               child: ListView.separated(
                 itemCount: slices.length + 1,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (_, i) {
                   if (i == slices.length) {
                     return _AddSliceButton(

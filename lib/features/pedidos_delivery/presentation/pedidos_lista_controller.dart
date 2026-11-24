@@ -4,35 +4,15 @@ import 'package:rabbit_pdv/features/pedidos_delivery/data/dto/pedido_resumo_resp
 import 'package:rabbit_pdv/features/pedidos_delivery/data/pedido_delivery_repository.dart';
 import 'package:rabbit_pdv/features/pedidos_delivery/domain/pedido_status.dart';
 
-/// Filtros de fila. Um chip por estado (1 query = 1 status, guia §4.12), mais
-/// "Todos". Cobrem TODOS os estados — nenhum pedido fica sem filtro. A ordem
-/// segue o fluxo: caminho feliz primeiro, exceções ao fim.
-enum FilaPedido {
-  todos('Todos', null),
-  recebido('Recebidos', PedidoStatus.recebido),
-  confirmando('Confirmando', PedidoStatus.confirmando),
-  separando('Separação', PedidoStatus.separando),
-  conferido('Conferidos', PedidoStatus.conferido),
-  aguardandoExpedicao('Aguard. expedição', PedidoStatus.aguardandoExpedicao),
-  emRota('Em rota', PedidoStatus.emRota),
-  entregue('Entregues', PedidoStatus.entregue),
-  concluido('Concluídos', PedidoStatus.concluido),
-  naoEntregue('Não entregues', PedidoStatus.naoEntregue),
-  pagamentoRecusado('Pag. recusado', PedidoStatus.pagamentoRecusado),
-  devolvido('Devolvidos', PedidoStatus.devolvido),
-  cancelado('Cancelados', PedidoStatus.cancelado);
-
-  const FilaPedido(this.label, this.status);
-
-  final String label;
-  final PedidoStatus? status;
-}
-
 /// Lista paginada de pedidos para a aba "Pedidos" (guia §4.12).
 ///
-/// Uma carga por vez, com guard de geração: se o operador troca de fila no meio
-/// de uma requisição, a resposta antiga é descartada (não pisca resultado
-/// errado). Paginação incremental via "carregar mais".
+/// O filtro é um único [PedidoStatus] opcional: `null` = todas as situações; um
+/// valor = só aquela. A UI oferece essa seleção por um dropdown (a trilha do
+/// fluxo migrou para o detalhe do pedido, onde "fluxo" é propriedade de um
+/// pedido, não da lista).
+///
+/// Uma carga por vez, com guard de geração: se o filtro muda no meio de uma
+/// requisição, a resposta antiga é descartada. Paginação incremental.
 class PedidosListaController extends ChangeNotifier {
   PedidosListaController(this._repo);
 
@@ -40,8 +20,9 @@ class PedidosListaController extends ChangeNotifier {
 
   static const int _tamanhoPagina = 20;
 
-  FilaPedido _fila = FilaPedido.todos;
-  FilaPedido get fila => _fila;
+  /// Status filtrado; `null` = todas as situações.
+  PedidoStatus? _status;
+  PedidoStatus? get status => _status;
 
   final List<PedidoResumoResponse> _itens = [];
   List<PedidoResumoResponse> get itens => List.unmodifiable(_itens);
@@ -67,15 +48,16 @@ class PedidosListaController extends ChangeNotifier {
   /// Há mais páginas a carregar?
   bool get temMais => _itens.length < _total;
 
-  /// Troca a fila e recarrega do zero. Ignora se for a mesma.
-  void selecionarFila(FilaPedido fila) {
-    if (fila == _fila) return;
-    _fila = fila;
+  /// Filtra por uma situação (dropdown) e recarrega. `null` = todas. Ignora se
+  /// não mudou.
+  void selecionarStatus(PedidoStatus? status) {
+    if (status == _status) return;
+    _status = status;
     recarregar();
   }
 
-  /// Carrega a primeira página da fila atual (usado no open e no refresh após
-  /// criar um pedido).
+  /// Carrega a primeira página do filtro atual (usado no open e quando a aba
+  /// Pedidos vira visível).
   Future<void> recarregar() async {
     final gen = ++_gen;
     _loading = true;
@@ -84,7 +66,7 @@ class PedidosListaController extends ChangeNotifier {
     notifyListeners();
 
     final result = await _repo.listar(
-      status: _fila.status,
+      status: _status,
       page: 0,
       size: _tamanhoPagina,
     );
@@ -118,11 +100,11 @@ class PedidosListaController extends ChangeNotifier {
 
     final proxima = _pagina + 1;
     final result = await _repo.listar(
-      status: _fila.status,
+      status: _status,
       page: proxima,
       size: _tamanhoPagina,
     );
-    if (gen != _gen) return; // fila trocou no meio — descarta
+    if (gen != _gen) return; // filtro trocou no meio — descarta
 
     result.fold(
       onOk: (pagina) {

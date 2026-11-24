@@ -1,9 +1,17 @@
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:rabbit_pdv/core/auth/lock_controller.dart';
 import 'package:rabbit_pdv/core/core_module.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/core/security/terminal_context_store.dart';
 import 'package:rabbit_pdv/domain/repositories/produtos_repository.dart';
+import 'package:rabbit_pdv/features/fiscal/data/arquivo_fiscal_local.dart';
+import 'package:rabbit_pdv/features/fiscal/data/nota_fiscal_repository.dart';
+import 'package:rabbit_pdv/features/fiscal/impressao/configuracao_impressao.dart';
+import 'package:rabbit_pdv/features/fiscal/impressao/impressao_fiscal.dart';
+import 'package:rabbit_pdv/features/fiscal/impressao/impressora_raw.dart';
+import 'package:rabbit_pdv/features/fiscal/impressao/xml_cupom_local.dart';
+import 'package:rabbit_pdv/features/fiscal/presentation/notas_atencao_controller.dart';
 import 'package:rabbit_pdv/features/pdv/data/anulacao_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/assumir_caixa_repository.dart';
 import 'package:rabbit_pdv/features/pdv/data/caixa_repository.dart';
@@ -53,6 +61,29 @@ class PdvModule extends Module {
     );
     i.addSingleton<PedidoDeliveryRepository>(
       () => PedidoDeliveryRepositoryImpl(i.get<ApiClient>()),
+    );
+    i.addSingleton<NotaFiscalRepository>(
+      () => NotaFiscalRepositoryImpl(i.get<ApiClient>()),
+    );
+    i.addSingleton<ArquivoFiscalLocal>(ArquivoFiscalLocalSistema.new);
+    // Impressão fiscal (guia v2.3 §9).
+    i.addSingleton<ImpressoraRaw>(ImpressoraRawWindows.new);
+    i.addSingleton<XmlCupomLocal>(() => XmlCupomLocalArquivos());
+    i.addSingleton<ConfiguracaoImpressaoStore>(ConfiguracaoImpressaoPrefs.new);
+    i.addSingleton<ImpressaoFiscal>(
+      () => ImpressaoFiscalImpl(
+        repo: i.get<NotaFiscalRepository>(),
+        xmlLocal: i.get<XmlCupomLocal>(),
+        impressora: i.get<ImpressoraRaw>(),
+        configuracao: i.get<ConfiguracaoImpressaoStore>(),
+        arquivos: i.get<ArquivoFiscalLocal>(),
+      ),
+    );
+    i.addSingleton<NotasAtencaoController>(
+      () => NotasAtencaoController(
+        i.get<NotaFiscalRepository>(),
+        pausado: () => i.get<LockController>().locked,
+      ),
     );
   }
 

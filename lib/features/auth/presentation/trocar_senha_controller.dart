@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
+import 'package:rabbit_pdv/core/failures/failure_codes.dart';
 import 'package:rabbit_pdv/core/result/result.dart';
 import 'package:rabbit_pdv/features/auth/data/dto/login_dtos.dart';
 import 'package:rabbit_pdv/features/auth/domain/auth_repository.dart';
@@ -87,6 +88,12 @@ class TrocarSenhaController extends ChangeNotifier {
       _errorMessage = 'Sessão expirada. Faça login novamente.';
       notifyListeners();
       return TrocaSenhaOutcome.sessaoExpirada;
+    }
+    if (f is BusinessRuleFailure &&
+        f.code == FailureCodes.credenciaisInvalidas) {
+      _errorMessage = 'Senha atual incorreta.';
+      notifyListeners();
+      return TrocaSenhaOutcome.falha;
     }
     _errorMessage = f.message; // inclui o detalhe de política do backend
     notifyListeners();

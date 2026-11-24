@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MOCK D-FIS-CUPOM: NFC-e em contingência offline ainda NÃO transmitida (sem protNFe). Sem assinatura, sem valor fiscal. -->
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe52261183876972000171650010000001049444444442" versao="4.00">
+    <ide>
+      <cUF>52</cUF>
+      <natOp>VENDA</natOp>
+      <mod>65</mod>
+      <serie>1</serie>
+      <nNF>104</nNF>
+      <dhEmi>2026-11-19T11:03:27-03:00</dhEmi>
+      <tpNF>1</tpNF>
+      <tpEmis>9</tpEmis>
+      <tpAmb>2</tpAmb>
+      <indPres>1</indPres>
+      <dhCont>2026-11-19T10:58:00-03:00</dhCont>
+      <xJust>Sem conexao com a internet no terminal (teste)</xJust>
+    </ide>
+    <emit>
+      <CNPJ>83876972000171</CNPJ>
+      <xNome>Mercado Rabbit Rex LTDA</xNome>
+      <xFant>Mercado Rabbit Rex</xFant>
+      <enderEmit>
+        <xLgr>Avenida Goiás</xLgr>
+        <nro>1000</nro>
+        <xBairro>Setor Central</xBairro>
+        <cMun>5208707</cMun>
+        <xMun>Goiânia</xMun>
+        <UF>GO</UF>
+        <CEP>74005010</CEP>
+      </enderEmit>
+      <IE>109876543</IE>
+    </emit>
+    <det nItem="1">
+      <prod>
+        <cProd>MERC-002</cProd>
+        <cEAN>7891000100103</cEAN>
+        <xProd>Arroz Tipo 1 5kg</xProd>
+        <NCM>10063021</NCM>
+        <CFOP>5102</CFOP>
+        <uCom>UN</uCom>
+        <qCom>2.0000</qCom>
+        <vUnCom>24.90</vUnCom>
+        <vProd>49.80</vProd>
+        <cEANTrib>7891000100103</cEANTrib>
+        <uTrib>UN</uTrib>
+        <qTrib>2.0000</qTrib>
+        <vUnTrib>24.90</vUnTrib>
+        <vDesc>2.00</vDesc>
+        <indTot>1</indTot>
+      </prod>
+    </det>
+    <det nItem="2">
+      <prod>
+        <cProd>HORT-001</cProd>
+        <cEAN>SEM GTIN</cEAN>
+        <xProd>Banana Prata</xProd>
+        <NCM>08039000</NCM>
+        <CFOP>5102</CFOP>
+        <uCom>KG</uCom>
+        <qCom>1.2350</qCom>
+        <vUnCom>5.99</vUnCom>
+        <vProd>7.40</vProd>
+        <cEANTrib>SEM GTIN</cEANTrib>
+        <uTrib>KG</uTrib>
+        <qTrib>1.2350</qTrib>
+        <vUnTrib>5.99</vUnTrib>
+        <indTot>1</indTot>
+      </prod>
+    </det>
+    <det nItem="3">
+      <prod>
+        <cProd>BEB-010</cProd>
+        <cEAN>7894900011517</cEAN>
+        <xProd>Refrigerante Cola 2L</xProd>
+        <NCM>22021000</NCM>
+        <CFOP>5102</CFOP>
+        <uCom>UN</uCom>
+        <qCom>1.0000</qCom>
+        <vUnCom>9.49</vUnCom>
+        <vProd>9.49</vProd>
+        <cEANTrib>7894900011517</cEANTrib>
+        <uTrib>UN</uTrib>
+        <qTrib>1.0000</qTrib>
+        <vUnTrib>9.49</vUnTrib>
+        <indTot>1</indTot>
+      </prod>
+    </det>
+    <total>
+      <ICMSTot>
+        <vProd>66.69</vProd>
+        <vDesc>2.00</vDesc>
+        <vNF>64.69</vNF>
+      </ICMSTot>
+    </total>
+    <pag>
+    <detPag>
+      <tPag>01</tPag>
+        <vPag>70.00</vPag>
+    </detPag>
+      <vTroco>5.31</vTroco>
+    </pag>
+  </infNFe>
+  <infNFeSupl>
+    <qrCode>https://mock.focusnfe.local/nfce/qrcode?p=52261183876972000171650010000001049444444442|3|2|19|64.69|ASSINATURA-FICTICIA-DE-CONTINGENCIA</qrCode>
+    <urlChave>https://mock.focusnfe.local/nfce/consulta</urlChave>
+  </infNFeSupl>
+</NFe>

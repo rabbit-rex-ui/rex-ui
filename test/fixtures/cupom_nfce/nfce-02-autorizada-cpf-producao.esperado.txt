@@ -1,0 +1,28 @@
+            Mercado Rabbit Rex LTDA
+     CNPJ 83.876.972/0001-71  IE 109876543
+ Avenida Goiás, 1000, Setor Central, Goiânia -
+               GO, CEP 74005-010
+Documento Auxiliar da Nota Fiscal de Consumidor
+                   Eletrônica
+------------------------------------------------
+001 Café Torrado e Moído 500g
+MERC-015  1 UN x 18,90                     18,90
+------------------------------------------------
+Qtde. total de itens                           1
+Valor total R$                             18,90
+FORMA DE PAGAMENTO                 VALOR PAGO R$
+Cartão de Débito                           18,90
+Troco R$                                    0,00
+------------------------------------------------
+        Consulte pela Chave de Acesso em
+   https://mock.focusnfe.local/nfce/consulta
+  5226 1183 8769 7200 0171 6500 1000 0001 0212
+                   2222 2222
+      [ QR CODE >= 25 mm com o conteúdo de
+              infNFeSupl/qrCode ]
+         CONSUMIDOR CPF 123.456.789-09
+                   Ana Souza
+         NFC-e nº 000.000.102 Série 001
+              19/11/2026 11:03:27
+   Protocolo de autorização: 152260000000102
+    Data de autorização: 19/11/2026 11:03:29

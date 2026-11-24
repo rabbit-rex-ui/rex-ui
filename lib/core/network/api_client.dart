@@ -1,13 +1,17 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:rabbit_pdv/core/auth/trusted_device_store.dart';
 import 'package:rabbit_pdv/core/failures/failure.dart';
 import 'package:rabbit_pdv/core/failures/failure_codes.dart';
-import 'package:rabbit_pdv/core/network/interceptors/trusted_device_interceptor.dart';
-import 'package:rabbit_pdv/core/result/result.dart';
-import 'package:rabbit_pdv/core/network/token_store.dart';
+import 'package:rabbit_pdv/core/network/arquivo_baixado.dart';
 import 'package:rabbit_pdv/core/network/interceptors/auth_interceptor.dart';
 import 'package:rabbit_pdv/core/network/interceptors/tenant_interceptor.dart';
-import 'package:rabbit_pdv/core/auth/trusted_device_store.dart';
+import 'package:rabbit_pdv/core/network/interceptors/trusted_device_interceptor.dart';
+import 'package:rabbit_pdv/core/network/relogio_servidor.dart';
+import 'package:rabbit_pdv/core/network/token_store.dart';
+import 'package:rabbit_pdv/core/result/result.dart';
 
 /// Cliente HTTP central. baseUrl vem do Bootstrap (--dart-define).
 /// Todo erro vira uma Failure tipada; repositórios desserializam via `decode`.
@@ -16,6 +20,7 @@ class ApiClient {
     required String baseUrl,
     required TokenStore tokens,
     required TrustedDeviceStore trustedDevices,
+    required RelogioServidor relogio,
     required VoidCallback onSessionExpired,
     Duration connectTimeout = const Duration(seconds: 5),
     Duration receiveTimeout = const Duration(seconds: 15),
@@ -34,6 +39,7 @@ class ApiClient {
 
     _dio = Dio(base);
     _dio.interceptors.addAll([
+      RelogioServidorInterceptor(relogio),
       TenantInterceptor(),
       TrustedDeviceInterceptor(trustedDevices, tokens),
       AuthInterceptor(
@@ -47,13 +53,23 @@ class ApiClient {
   late final Dio _dio;
   Dio get raw => _dio;
 
+  /// Executa a chamada e desserializa só o corpo (`res.data`). Caso comum.
   Future<Result<T, Failure>> send<T>(
     Future<Response<dynamic>> Function(Dio dio) call, {
     required T Function(dynamic data) decode,
+  }) {
+    return sendRaw<T>(call, decode: (res) => decode(res.data));
+  }
+
+  /// Como [send], mas entrega a [Response] inteira ao `decode` — para quando
+  /// os cabeçalhos importam (ex.: `Content-Type` de um download).
+  Future<Result<T, Failure>> sendRaw<T>(
+    Future<Response<dynamic>> Function(Dio dio) call, {
+    required T Function(Response<dynamic> res) decode,
   }) async {
     try {
       final res = await call(_dio);
-      return Ok(decode(res.data));
+      return Ok(decode(res));
     } on DioException catch (e) {
       // Diagnóstico cru em debug: a Failure tipada (retornada abaixo) é ótima
       // para a UI, mas apaga status/método/URL/corpo — que é o que precisamos
@@ -63,7 +79,7 @@ class ApiClient {
         debugPrint(
           '[api][http-erro] ${o.method} ${o.uri} '
           '→ type=${e.type} status=${e.response?.statusCode} '
-          'body=${e.response?.data}',
+          'body=${_decodeBody(e.response?.data)}',
         );
       }
       return Err(_mapDioException(e));
@@ -74,6 +90,18 @@ class ApiClient {
       }
       return Err(UnknownFailure('Resposta inválida do servidor.', cause: e));
     }
+  }
+
+  /// GET de arquivo binário (PDF, HTML, XML). Em erro, o corpo problem+json é
+  /// decodificado normalmente — o mapeamento de falhas é o mesmo do [send].
+  Future<Result<ArquivoBaixado, Failure>> download(String path) {
+    return sendRaw<ArquivoBaixado>(
+      (dio) => dio.get<dynamic>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      ),
+      decode: ArquivoBaixado.fromResponse,
+    );
   }
 
   static Options idempotent(String key) =>
@@ -87,6 +115,10 @@ Failure _mapDioException(DioException e) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
+    // dio 5.11+: o tempo estourou ao decodificar a resposta. O servidor pode
+    // ter processado o pedido — para quem chama, é tão incerto quanto um
+    // timeout de recebimento (ex.: cancelamento de nota, guia fiscal §8.4).
+    case DioExceptionType.transformTimeout:
       return NetworkFailure('Tempo de conexão esgotado.', cause: e);
     case DioExceptionType.connectionError:
       return NetworkFailure('Sem conexão com o servidor.', cause: e);
@@ -104,7 +136,8 @@ Failure _mapDioException(DioException e) {
 }
 
 Failure _mapStatus(Response<dynamic> res) {
-  final pd = _problemDetail(res.data);
+  final body = _decodeBody(res.data);
+  final pd = _problemDetail(body);
   final status = res.statusCode ?? 0;
   final msg = pd.detail ?? pd.title ?? 'Erro inesperado.';
 
@@ -112,31 +145,42 @@ Failure _mapStatus(Response<dynamic> res) {
     case 400:
       return ValidationFailure(
         pd.detail ?? 'Dados inválidos.',
-        fieldErrors: _fieldErrors(res.data),
+        fieldErrors: _fieldErrors(body),
       );
     case 401:
-      // Regra geral: 401 = token do operador expirado → NetworkFailure, e o
-      // AuthInterceptor dispara o refresh. EXCEÇÃO: endpoints com step-up
-      // (fechamento, anulação) devolvem 401 com corpo tipado `code`
-      // (stepup-invalid-credential). Aí o 401 é credencial de supervisor
-      // inválida, não sessão expirada — preservamos o `code` para o repo/
-      // controller rotearem. 401 de token expirado NÃO traz `code`, então cai
-      // no ramo antigo, intacto.
-      if (pd.code != null) {
-        return BusinessRuleFailure(msg, code: pd.code!);
+      // Sessão: token ausente/inválido/expirado — `code: nao_autenticado`
+      // (problem+json desde o backend M7) ou sem corpo (legado). O
+      // AuthInterceptor já tentou o refresh; a UI trata como sessão expirada.
+      // Qualquer OUTRO `code` em 401 é credencial errada, não sessão:
+      // `credenciais_invalidas` (login, troca de senha) ou
+      // `stepup-invalid-credential` (supervisor no fechamento/anulação).
+      // Preservamos o `code` para o repo rotear.
+      final code401 = pd.code;
+      if (code401 == null || code401 == FailureCodes.naoAutenticado) {
+        return const NetworkFailure('Sessão expirada.', statusCode: 401);
       }
-      return const NetworkFailure('Sessão expirada.', statusCode: 401);
+      return BusinessRuleFailure(msg, code: code401, details: pd.extras);
     case 403:
-      // Preferimos o `code` estável do corpo; senão caímos no text-matching.
-      return BusinessRuleFailure(msg, code: pd.code ?? _code403(msg, pd.type));
+      return BusinessRuleFailure(
+        msg,
+        code: pd.code ?? _codeFromType(pd.type) ?? FailureCodes.semPermissao,
+        details: pd.extras,
+      );
     case 404:
       return NotFoundFailure(pd.detail ?? 'Recurso não encontrado.');
     case 409:
-      return BusinessRuleFailure(msg, code: pd.code ?? _code409(msg));
+      // `code` do corpo → sufixo do `type`. Nunca o texto do detail: era ele
+      // que transformava `expedicao-bloqueada` em CAIXA_BLOQUEADO.
+      return BusinessRuleFailure(
+        msg,
+        code: pd.code ?? _codeFromType(pd.type) ?? FailureCodes.conflito,
+        details: pd.extras,
+      );
     case 422:
       return BusinessRuleFailure(
         msg,
         code: pd.code ?? _codeFromType(pd.type) ?? FailureCodes.regraNegocio,
+        details: pd.extras,
       );
     case 429:
       final wait = _retryAfter(res);
@@ -144,6 +188,22 @@ Failure _mapStatus(Response<dynamic> res) {
       return NetworkFailure('Muitas tentativas.$extra', statusCode: 429);
     default:
       return NetworkFailure(msg, statusCode: status);
+  }
+}
+
+/// Downloads (`ResponseType.bytes`) entregam o corpo de erro como bytes. Tenta
+/// ler como JSON (problem+json); se não der, devolve o texto ou o original.
+dynamic _decodeBody(dynamic data) {
+  if (data is! List<int>) return data;
+  try {
+    final text = utf8.decode(data);
+    try {
+      return jsonDecode(text);
+    } on FormatException {
+      return text;
+    }
+  } on FormatException {
+    return data;
   }
 }
 
@@ -158,35 +218,22 @@ Map<String, String> _fieldErrors(dynamic data) {
   return out;
 }
 
-String _code403(String detail, String? type) {
-  if (_mentions(detail, ['supervisor', 'supervise'])) {
-    return FailureCodes.exigeSupervisor;
-  }
-  if (_mentions(detail, ['bloquead', 'locked'])) {
-    return FailureCodes.contaBloqueada;
-  }
-  return _codeFromType(type) ?? FailureCodes.semPermissao;
-}
-
-String _code409(String detail) {
-  if (_mentions(detail, ['bloquead'])) return FailureCodes.caixaBloqueado;
-  if (_mentions(detail, ['fechad'])) return FailureCodes.caixaFechado;
-  if (_mentions(detail, ['idempotency', 'idempotência'])) {
-    return FailureCodes.idempotenciaConflito;
-  }
-  return 'CONFLITO';
-}
-
+/// `https://errors.rabbit-rex.com/nota-nao-cancelavel` → `NOTA_NAO_CANCELAVEL`.
+///
+/// Devolve `null` quando o `type` não identifica o erro: ausente, sem caminho,
+/// ou com esquema mas sem host — caso do `about:blank`, o padrão do Spring, que
+/// antes virava o code `ABOUT:BLANK` e escondia os fallbacks
+/// (`SEM_PERMISSAO`, `REGRA_NEGOCIO`).
 String? _codeFromType(String? type) {
-  if (type == null) return null;
-  final seg = type.split('/').lastWhere((s) => s.isNotEmpty, orElse: () => '');
+  if (type == null || type.isEmpty) return null;
+  final uri = Uri.tryParse(type);
+  if (uri == null || (uri.hasScheme && uri.host.isEmpty)) return null;
+  final seg = uri.pathSegments.lastWhere(
+    (s) => s.isNotEmpty,
+    orElse: () => '',
+  );
   if (seg.isEmpty || seg.contains('.')) return null;
   return seg.toUpperCase().replaceAll('-', '_');
-}
-
-bool _mentions(String h, List<String> needles) {
-  final s = h.toLowerCase();
-  return needles.any((n) => s.contains(n.toLowerCase()));
 }
 
 Duration? _retryAfter(Response<dynamic> res) {
@@ -194,19 +241,51 @@ Duration? _retryAfter(Response<dynamic> res) {
   return s == null ? null : Duration(seconds: s);
 }
 
-({String? type, String? title, String? detail, String? code}) _problemDetail(
-  dynamic data,
-) {
+/// Membros padrão do ProblemDetail; o resto vai para `extras`.
+const _membrosPadrao = {
+  'type',
+  'title',
+  'status',
+  'detail',
+  'instance',
+  'code',
+};
+
+typedef _ProblemDetail = ({
+  String? type,
+  String? title,
+  String? detail,
+  String? code,
+  Map<String, Object?> extras,
+});
+
+_ProblemDetail _problemDetail(dynamic data) {
   if (data is Map<String, dynamic>) {
     return (
       type: data['type'] as String?,
       title: data['title'] as String?,
       detail: data['detail'] as String?,
       code: data['code'] as String?, // ProblemDetail estendido (contrato §8)
+      extras: {
+        for (final e in data.entries)
+          if (!_membrosPadrao.contains(e.key)) e.key: e.value,
+      },
     );
   }
   if (data is String && data.isNotEmpty) {
-    return (type: null, title: null, detail: data, code: null);
+    return (
+      type: null,
+      title: null,
+      detail: data,
+      code: null,
+      extras: const {},
+    );
   }
-  return (type: null, title: null, detail: null, code: null);
+  return (
+    type: null,
+    title: null,
+    detail: null,
+    code: null,
+    extras: const {},
+  );
 }

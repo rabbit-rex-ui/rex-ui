@@ -3,6 +3,7 @@ import 'package:rabbit_pdv/core/auth/lock_controller.dart';
 import 'package:rabbit_pdv/core/auth/trusted_device_store.dart';
 import 'package:rabbit_pdv/core/config/env.dart';
 import 'package:rabbit_pdv/core/network/api_client.dart';
+import 'package:rabbit_pdv/core/network/relogio_servidor.dart';
 import 'package:rabbit_pdv/core/network/token_store.dart';
 import 'package:rabbit_pdv/data/repositories/produtos_repository_impl.dart';
 import 'package:rabbit_pdv/data/repositories/produtos_repository_mock.dart';
@@ -31,11 +32,13 @@ class CoreModule extends Module {
       () => CaixaFisicoRepositoryImpl(i.get<ApiClient>()),
     );
 
+    i.addSingleton<RelogioServidor>(RelogioServidor.new);
     i.addSingleton<ApiClient>(
       () => ApiClient(
         baseUrl: Env.apiBaseUrl,
         tokens: i.get<TokenStore>(),
         trustedDevices: i.get<TrustedDeviceStore>(),
+        relogio: i.get<RelogioServidor>(),
         onSessionExpired: () => i.get<LockController>().lock(),
       ),
     );
